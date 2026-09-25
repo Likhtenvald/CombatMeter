@@ -20,6 +20,10 @@ internal sealed class CombatClusterManager
     internal CombatClusterManager(EncounterSettings settings = null) { Settings = settings ?? new EncounterSettings(); }
     internal bool TryGet(long id, out CombatCluster cluster) => _active.TryGetValue(id, out cluster);
     internal bool TryGetMembership(CombatNode node, out CombatCluster cluster) => _membership.TryGetValue(node, out cluster);
+    // Stable gameplay PlayerID, never a network peer ID. Active membership includes Recovery.
+    // Pure lookup: the host updates lifecycle separately; no timeout processing or fallback.
+    internal bool TryGetClusterForPlayer(long playerId, out CombatCluster cluster) =>
+        TryGetMembership(CombatNode.Player(playerId), out cluster);
 
     internal CombatCluster Accept(DamageCommit commit, double now, double? eventTime = null) =>
         Accept(new AttributedDamageEvent(commit, null, true), now, eventTime);

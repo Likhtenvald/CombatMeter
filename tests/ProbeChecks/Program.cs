@@ -206,6 +206,7 @@ internal static class Program
         _passed += UiContributionChecks.Run();
         _passed += PlayerColorChecks.Run();
         _passed += CombatClusterChecks.Run();
+        _passed += PlayerClusterRoutingChecks.Run();
         _passed += ClusterTransportChecks.Run();
         _passed += LifecycleIntegrationChecks.Run();
         _passed += AttributionChecks.Run();
