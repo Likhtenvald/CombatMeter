@@ -35,7 +35,9 @@ internal sealed class DamageCommitTransport
     private ZRoutedRpc _rpc;
     private WeakReference<ZNet> _blockedNet;
     private CommitSession _session;
+    // Temporary 4A legacy snapshot compatibility path; clusters never feed this manager.
     private EncounterManager _encounter;
+    private CombatClusterManager _clusters;
     private MagicAttributionResolver _attribution;
     private EventSequence _attributionSequence;
     private double _clockAnchorMonotonic;
@@ -110,6 +112,7 @@ internal sealed class DamageCommitTransport
         {
             _encounterSettings = host ? new EncounterSettings(ReadSoftTimeout(), ReadRecoveryTimeout(), ReadDpsIdleTimeout()) : null;
             _encounter = host ? new EncounterManager(new CombatStatisticsAggregator(), _encounterSettings, Plugin.EncounterLog) : null;
+            _clusters = host ? new CombatClusterManager(_encounterSettings) : null;
             if (host) LogEncounterSettings("CombatEncounterSettings");
             _attribution = host ? new MagicAttributionResolver() : null;
             _attributionSequence = new EventSequence(peer, Guid.NewGuid());
@@ -172,11 +175,14 @@ internal sealed class DamageCommitTransport
             return new DeathObservation("NoActiveSession", EncounterState.NoEncounter, EncounterState.NoEncounter);
 
         EncounterState before = _encounter.State;
-        PlayerDeathResult result = _encounter.OnPlayerDied(playerId, _now(), incarnation);
+        double now = _now();
+        PlayerDeathResult result = _encounter.OnPlayerDied(playerId, now, incarnation);
+        _clusters.OnPlayerDied(playerId, now, incarnation);
         return new DeathObservation(result.ToString(), before, _encounter.State);
     }
 
     internal EncounterManager Encounter => _encounter;
+    internal CombatClusterManager Clusters => _clusters;
     internal MagicAttributionResolver Attribution => _attribution;
     internal int AttributionPendingCount => _attributionOutbox.Count;
     internal CombatSnapshotStore SnapshotStore => _snapshotStore;
@@ -208,6 +214,7 @@ internal sealed class DamageCommitTransport
         double now = _now();
         SyncEncounterSettings();
         _encounter?.Update(now);
+        _clusters?.Update(now);
         _session?.Pump(now);
         if (_session != null && !_session.IsHost)
         {
@@ -421,7 +428,9 @@ internal sealed class DamageCommitTransport
         if (commit.Facts.DotKind > 0)
             Plugin.MagicLog("DotTickDistributed event=" + commit.Id + " kind=" + (DotKind)(commit.Facts.DotKind - 1) +
                 " effective=" + commit.EffectiveHpLoss.ToString(CultureInfo.InvariantCulture) + " portions=" + attributed.DamageDone.Count);
-        _encounter.Accept(attributed, now, EventTime(commit));
+        double eventTime = EventTime(commit);
+        _encounter.Accept(attributed, now, eventTime);
+        _clusters.Accept(attributed, now, eventTime);
     }
 
     private double EventTime(DamageCommit commit)
@@ -489,6 +498,7 @@ internal sealed class DamageCommitTransport
     {
         _session?.Close(reason);
         _encounter?.Reset();
+        _clusters?.Reset();
         _attribution?.Reset();
         _attributionAcceptor.Reset(); _attributionOutbox.Reset(); _pendingSummon.Clear(); _pendingDot.Clear();
         _snapshotStore.Clear(); _snapshotEpoch = Guid.Empty; _snapshotSequence = 0; _nextSnapshotAt = 0d;
@@ -496,6 +506,7 @@ internal sealed class DamageCommitTransport
         _lastAcceptedSnapshotDiagnosticKey = null; _nextSnapshotReceivedDiagnosticAt = 0d;
         _session = null;
         _encounter = null;
+        _clusters = null;
         _encounterSettings = null;
         _attribution = null;
         _attributionSequence = null;

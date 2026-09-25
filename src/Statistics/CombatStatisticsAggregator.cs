@@ -43,6 +43,13 @@ internal sealed class CombatStatisticsAggregator
     internal bool TryGet(long playerId, out PlayerCombatStatistics statistics) =>
         _players.TryGetValue(playerId, out statistics);
 
+    internal void MoveDisjointFrom(CombatStatisticsAggregator source)
+    {
+        foreach (long player in source._players.Keys)
+            if (_players.ContainsKey(player)) throw new System.InvalidOperationException("Cluster statistics overlap");
+        foreach (var pair in source._players) _players.Add(pair.Key, pair.Value);
+        source._players.Clear();
+    }
     internal void Reset() => _players.Clear();
 
     private PlayerCombatStatistics GetOrCreate(long playerId, string displayName)

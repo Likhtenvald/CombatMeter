@@ -188,6 +188,37 @@ internal sealed class EncounterManager
     internal bool TryGetParticipant(long playerId, out EncounterParticipant participant) =>
         _participants.TryGetValue(playerId, out participant);
 
+    // Cluster-only lifecycle entry: IDs are allocated across all clusters in a session.
+    internal void BeginCluster(long id, double now)
+    {
+        ValidateTime(now);
+        if (State != EncounterState.NoEncounter || id <= 0) throw new InvalidOperationException("Invalid cluster start");
+        Start(now);
+        EncounterId = id;
+    }
+
+    // Membership guarantees disjoint players. Move their exact state objects, including
+    // compacted DPS intervals, death-incarnation deduplication and ticket deadlines.
+    // No replay, rounding, reset of the survivor, or fabricated offensive activity.
+    internal void AbsorbDisjoint(EncounterManager source)
+    {
+        if (source == null || ReferenceEquals(this, source) || !ReferenceEquals(Settings, source.Settings) ||
+            (State != EncounterState.Active && State != EncounterState.Recovery) ||
+            (source.State != EncounterState.Active && source.State != EncounterState.Recovery))
+            throw new InvalidOperationException("Cannot merge inactive or incompatible encounters");
+        foreach (long player in source._participants.Keys)
+            if (_participants.ContainsKey(player)) throw new InvalidOperationException("Cluster memberships overlap");
+        Statistics.MoveDisjointFrom(source.Statistics);
+        foreach (var pair in source._participants) _participants.Add(pair.Key, pair.Value);
+        foreach (var pair in source._recoveryTickets) _recoveryTickets.Add(pair.Key, pair.Value);
+        foreach (var pair in source._dpsActivity) _dpsActivity.Add(pair.Key, pair.Value);
+        StartTime = Math.Min(StartTime, source.StartTime);
+        LastActivityTime = Math.Max(LastActivityTime, source.LastActivityTime);
+        if (source.State == EncounterState.Active) State = EncounterState.Active;
+        source.Reset();
+        // The caller now applies the bridge once through Accept, preserving its existing
+        // event-time/reengagement guard (a delayed pre-death hit cannot clear a ticket).
+    }
     internal void Reset()
     {
         Statistics.Reset();
