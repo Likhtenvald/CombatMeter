@@ -64,3 +64,7 @@ Dedicated servers are not currently supported.
 
 More technical details remain available under `docs/` in the source project.
 
+## License
+
+CombatMeter is distributed under the [MIT License](LICENSE).
+

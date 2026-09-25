@@ -15,6 +15,7 @@ $staging = Join-Path $outputRoot $packageName
 $zipPath = Join-Path $outputRoot "$packageName.zip"
 $dllPath = Join-Path $projectRoot "outputs/build/$Configuration/netstandard2.1/CombatMeter.dll"
 $manifestPath = Join-Path $projectRoot "manifest.json"
+$licensePath = Join-Path $projectRoot "LICENSE"
 
 & dotnet build $projectPath -c $Configuration
 if ($LASTEXITCODE -ne 0) { throw "Release build failed." }
@@ -28,16 +29,17 @@ if ($manifest.name -ne "CombatMeter") { throw "Manifest package name must be Com
 if ($manifest.version_number -ne $version) { throw "Manifest version $($manifest.version_number) differs from project version $version." }
 if ($manifest.name -notmatch '^[A-Za-z0-9_]+$') { throw "Manifest package name contains invalid characters." }
 if ([string]::IsNullOrWhiteSpace($manifest.description) -or $manifest.description.Length -gt 250) { throw "Manifest description is missing or too long." }
-if ($null -eq $manifest.website_url) { throw "Manifest website_url must be present; use an empty string when unavailable." }
+if ($manifest.website_url -ne "https://github.com/Likhtenvald/CombatMeter") { throw "Manifest website_url must point to the public CombatMeter repository." }
 if ($manifest.dependencies.Count -ne 1 -or $manifest.dependencies[0] -ne "denikson-BepInExPack_Valheim-5.4.2350") { throw "Unexpected dependency list." }
+if (!(Test-Path -LiteralPath $licensePath)) { throw "LICENSE is required for the Thunderstore package." }
 
 if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $staging "plugins") -Force | Out-Null
 Copy-Item -LiteralPath $manifestPath -Destination $staging
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination $staging
 Copy-Item -LiteralPath (Join-Path $projectRoot "CHANGELOG.md") -Destination $staging
+Copy-Item -LiteralPath $licensePath -Destination $staging
 Copy-Item -LiteralPath $dllPath -Destination (Join-Path $staging "plugins/CombatMeter.dll")
-if (Test-Path -LiteralPath (Join-Path $projectRoot "LICENSE")) { Copy-Item -LiteralPath (Join-Path $projectRoot "LICENSE") -Destination $staging }
 
 $icon = Join-Path $projectRoot "icon.png"
 if (!(Test-Path -LiteralPath $icon)) {
@@ -54,8 +56,7 @@ if ($forbidden) { throw "Forbidden package artifact: $($forbidden.FullName -join
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zipPath -CompressionLevel Optimal
 
-$expected = @("CHANGELOG.md", "README.md", "icon.png", "manifest.json", "plugins/CombatMeter.dll")
-if (Test-Path -LiteralPath (Join-Path $staging "LICENSE")) { $expected += "LICENSE" }
+$expected = @("CHANGELOG.md", "LICENSE", "README.md", "icon.png", "manifest.json", "plugins/CombatMeter.dll")
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
 try { $actual = @($archive.Entries | Where-Object { $_.FullName -notmatch '/$' } | ForEach-Object { $_.FullName.Replace('\','/') } | Sort-Object) }
