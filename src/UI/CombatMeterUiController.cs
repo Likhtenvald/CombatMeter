@@ -187,7 +187,7 @@ internal sealed class CombatMeterUiController
         var root = new GameObject("Row" + index, typeof(RectTransform)); root.transform.SetParent(_panel.transform, false);
         SetRect((RectTransform)root.transform, 0f, -86f - index * RowHeight, _width, RowHeight);
         Image background = AddRowImage(root.transform, "Background", new Color(1f, 1f, 1f, index % 2 == 0 ? 0.035f : 0.065f));
-        Image fill = AddRowImage(root.transform, "DamageFill", new Color(0.18f, 0.48f, 0.72f, _barOpacity));
+        Image fill = AddRowImage(root.transform, "DamageFill", Color.clear);
         var row = new RowView(root, AddText(root.transform, "Player", "", 12f, 0f, 100f, RowHeight, 14, TextAnchor.MiddleLeft),
             AddText(root.transform, "Damage", "", 0f, 0f, 66f, RowHeight, 14, TextAnchor.MiddleRight),
             AddText(root.transform, "Percent", "", 0f, 0f, 58f, RowHeight, 14, TextAnchor.MiddleRight),
@@ -281,6 +281,7 @@ internal sealed class CombatMeterUiController
         private readonly Text _name, _damage, _percent, _dps, _taken;
         private readonly Image _background, _fill;
         private double _contribution;
+        private uint _playerColorRgb;
         internal RowView(GameObject root, Text name, Text damage, Text percent, Text dps, Text taken, Image background, Image fill)
         { Root = root; _name = name; _damage = damage; _percent = percent; _dps = dps; _taken = taken; _background = background; _fill = fill; }
         internal void ApplyWidth(float width, bool showPercent)
@@ -296,11 +297,12 @@ internal sealed class CombatMeterUiController
         internal void ApplyStyle(bool showBars, bool showPercent, float opacity)
         {
             _percent.gameObject.SetActive(showPercent); _background.raycastTarget = false; _fill.raycastTarget = false;
-            _fill.color = new Color(0.18f, 0.48f, 0.72f, opacity);
+            _fill.color = new Color(((_playerColorRgb >> 16) & 255) / 255f, ((_playerColorRgb >> 8) & 255) / 255f, (_playerColorRgb & 255) / 255f, opacity);
             _fill.gameObject.SetActive(showBars && _contribution > 0d);
         }
         internal void Set(CombatMeterRowModel row, float width, bool showBars, bool showPercent, float opacity)
         {
+            _playerColorRgb = row.PlayerColorRgb;
             _contribution = Math.Max(0d, Math.Min(1d, row.DamageContribution));
             int max = Math.Max(8, Math.Min(64, (int)((width - (showPercent ? 296f : 234f)) / 8f)));
             _name.text = Ellipsize(row.NameText, max); _damage.text = row.DamageText; _percent.text = row.PercentText; _dps.text = row.DpsText; _taken.text = row.TakenText;

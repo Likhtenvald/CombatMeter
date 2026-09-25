@@ -15,6 +15,7 @@
     <Compile Include="../../src/Attribution/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../src/Snapshot/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../src/UI/CombatMeterViewModel.cs" Link="Production/CombatMeterViewModel.cs" />
+    <Compile Include="../../src/UI/PlayerColorPalette.cs" Link="Production/PlayerColorPalette.cs" />
     <Compile Include="../../src/UI/CombatMeterLayout.cs" Link="Production/CombatMeterLayout.cs" />
     <Compile Include="../../src/DamageCommitTransport.cs" Link="Production/DamageCommitTransport.cs" />
   </ItemGroup>

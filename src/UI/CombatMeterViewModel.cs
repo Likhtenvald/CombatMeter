@@ -9,6 +9,7 @@ namespace DiagnosticDamageProbe.UI;
 internal sealed class CombatMeterRowModel
 {
     internal long PlayerId { get; }
+    internal uint PlayerColorRgb => PlayerColorPalette.Resolve(PlayerId);
     internal string NameText { get; }
     internal string DamageText { get; }
     internal string PercentText { get; }
