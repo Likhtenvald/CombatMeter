@@ -184,6 +184,7 @@ internal static class TransportChecks
         var client = new Node(202, false) { Adapter = new DamageCommitTransport(() => now) };
         Link(host, client);
         host.Use(); host.Adapter.Bind(host.Net);
+        var observedPlayer = new Player { PlayerId = 777 }; observedPlayer.View.Zdo.Owner = 202; Player.Instances.Add(observedPlayer);
         var pve = new DamageFacts(111, 3, false, null, AttackerClass.Player, 777, 1, "Greydwarf", "Лучник");
         client.Use(); client.Adapter.Bind(client.Net); client.Adapter.Observe(202, pve, 6f);
 
@@ -191,7 +192,7 @@ internal static class TransportChecks
         True(host.Adapter.SnapshotStore.TryGetLatest(out var local));
         client.Use(); True(client.Adapter.SnapshotStore.TryGetLatest(out var remote));
         Eq(local.SnapshotEpoch, remote.SnapshotEpoch); Eq(local.Sequence, remote.Sequence);
-        Eq(local.EncounterId, remote.EncounterId); Eq(1, remote.Players.Count);
+        Eq(0L, local.EncounterId); Eq(0, local.Players.Count); True(remote.EncounterId > 0); Eq(1, remote.Players.Count);
         Eq(6f, remote.Players[0].DamageDone);
 
         int sent = host.Sent.Count(x => x.Name == DamageCommitTransport.SnapshotRpc);
@@ -224,6 +225,7 @@ internal static class TransportChecks
         var host = new Node(101, true) { Adapter = new DamageCommitTransport(() => now, () => 20d, () => 180d, () => 6d) };
         var client = new Node(202, false) { Adapter = new DamageCommitTransport(() => now, () => 5d, () => 30d, () => 1d) };
         Link(host, client); host.Use(); host.Adapter.Bind(host.Net); client.Use(); client.Adapter.Bind(client.Net);
+        var observedPlayer = new Player { PlayerId = 777 }; observedPlayer.View.Zdo.Owner = 202; Player.Instances.Add(observedPlayer);
         var pve = new DamageFacts(111, 3, false, null, AttackerClass.Player, 777, 1, "Troll", "Player");
         client.Adapter.Observe(202, pve, 5f);
         now = 6d; host.Use(); host.Adapter.Update(); Eq(DiagnosticDamageProbe.Encounter.EncounterState.Active, host.Adapter.Encounter.State);
@@ -233,7 +235,7 @@ internal static class TransportChecks
         Eq(6d, active.EncounterElapsedSeconds); Eq(5f, active.Players[0].DamageDone); Eq(0f, active.Players[0].DamageTaken);
         now = 20.1d; host.Use(); host.Adapter.Update(); Eq(DiagnosticDamageProbe.Encounter.EncounterState.Finished, host.Adapter.Encounter.State);
         client.Use(); True(client.Adapter.SnapshotStore.TryGetLatest(out var finished));
-        Eq(DiagnosticDamageProbe.Encounter.EncounterState.Finished, finished.EncounterState);
+        Eq(DiagnosticDamageProbe.Encounter.EncounterState.NoEncounter, finished.EncounterState); Eq(0, finished.Players.Count);
     }
 
     private static void AttributionSequence()
@@ -335,6 +337,7 @@ internal static class TransportChecks
     private static void Link(Node host, Node client)
     {
         client.Net.ServerPeer = new ZNetPeer { m_uid = host.Peer };
+        host.Net.Peers.Add(new ZNetPeer { m_uid = client.Peer });
         void Wire(Node from, Node to) => from.Rpc.Send = (target, name, package) =>
         {
             if (target != ZRoutedRpc.Everybody) Eq(to.Peer, target); from.Sent.Add((target, name, package));
@@ -343,7 +346,7 @@ internal static class TransportChecks
         Wire(host, client); Wire(client, host);
     }
     private static int Messages(string kind) => Plugin.TransportMessages.Count(x => x.StartsWith(kind + " ", StringComparison.Ordinal));
-    private static void Test(string name, Action run) { run(); _passed++; Console.WriteLine("PASS " + name); }
+    private static void Test(string name, Action run) { Player.Instances.Clear(); Player.m_localPlayer = null; run(); _passed++; Console.WriteLine("PASS " + name); }
     private static void Eq<T>(T expected, T actual) { if (!Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}"); }
     private static void True(bool value) { if (!value) throw new Exception("Assertion failed"); }
     private static void Fails(Action action)

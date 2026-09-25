@@ -32,6 +32,21 @@ internal static class CombatSnapshotBuilder
         return new CombatSnapshot(hostPeer, epoch, sequence, encounter.EncounterId, encounter.State, elapsed, rows);
     }
 
+    internal static CombatSnapshot Empty(long hostPeer, Guid epoch, long sequence)
+    {
+        if (hostPeer == 0 || epoch == Guid.Empty || sequence <= 0) throw new ArgumentException("Invalid snapshot identity");
+        return new CombatSnapshot(hostPeer, epoch, sequence, 0, EncounterState.NoEncounter, 0d, Array.Empty<CombatSnapshotPlayer>());
+    }
+
+    internal static CombatSnapshot ForPlayer(long hostPeer, Guid epoch, long sequence,
+        CombatClusterManager clusters, long? playerId, double now)
+    {
+        if (clusters == null) throw new ArgumentNullException(nameof(clusters));
+        return playerId.HasValue && clusters.TryGetClusterForPlayer(playerId.Value, out CombatCluster cluster)
+            ? Build(hostPeer, epoch, sequence, cluster.Encounter, now)
+            : Empty(hostPeer, epoch, sequence);
+    }
+
     private static string LimitName(string value)
     {
         value ??= ""; int length = Math.Min(value.Length, MaxDisplayNameLength);

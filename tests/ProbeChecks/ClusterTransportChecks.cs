@@ -8,7 +8,7 @@ internal static class ClusterTransportChecks
     private static int _passed;
     internal static int Run()
     {
-        Test("host feeds independent clusters while snapshot remains global", () =>
+        Test("host feeds independent clusters and snapshot uses local membership", () =>
         {
             var h = new Host();
             h.Adapter.Observe(101, Facts(1, 10), 5);
@@ -17,12 +17,13 @@ internal static class ClusterTransportChecks
             True(h.Adapter.Encounter.Statistics.TryGet(1, out var a)); Eq(5f, a.DamageDone);
             True(h.Adapter.Encounter.Statistics.TryGet(2, out var b)); Eq(7f, b.DamageDone);
             h.Adapter.Update(); True(h.Adapter.SnapshotStore.TryGetLatest(out var snapshot));
-            Eq(2, snapshot.Players.Count); Eq(h.Adapter.Encounter.EncounterId, snapshot.EncounterId);
+            Eq(1, snapshot.Players.Count); Eq(1L, snapshot.Players[0].PlayerId);
             True(h.Adapter.Clusters.TryGetMembership(CombatNode.Player(1), out var cluster));
             True(cluster.Encounter.Statistics.TryGet(1, out var separate));
             True(!ReferenceEquals(a, separate));
-            // Domain lifecycle cannot route, clear, or mutate the compatibility snapshot path.
+            // Legacy diagnostics stay independent, but cannot supply a fallback snapshot.
             h.Adapter.Clusters.Reset(); Eq(2, h.Adapter.Encounter.Statistics.Count);
+            h.Now = 1; h.Adapter.Update(); True(h.Adapter.SnapshotStore.TryGetLatest(out snapshot)); Eq(0, snapshot.Players.Count); Eq(EncounterState.NoEncounter, snapshot.EncounterState);
         });
         Test("canonical remote dedup applies bridge once to both paths", () =>
         {
@@ -85,6 +86,8 @@ internal static class ClusterTransportChecks
         internal readonly ZRoutedRpc Rpc = new ZRoutedRpc();
         internal Host()
         {
+            Player.Instances.Clear(); Player.m_localPlayer = new Player { PlayerId = 1 };
+            Player.m_localPlayer.View.Zdo.Owner = 101; Player.Instances.Add(Player.m_localPlayer);
             ZDOMan.instance = new ZDOMan(); ZDOMan.Session = 101;
             ZNet.instance = new ZNet { Server = true, SinglePlayer = false };
             ZRoutedRpc.instance = Rpc; Rpc.Send = (_, _, _) => { };

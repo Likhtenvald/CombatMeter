@@ -208,6 +208,7 @@ internal static class Program
         _passed += CombatClusterChecks.Run();
         _passed += PlayerClusterRoutingChecks.Run();
         _passed += ClusterTransportChecks.Run();
+        _passed += PeerSnapshotChecks.Run();
         _passed += LifecycleIntegrationChecks.Run();
         _passed += AttributionChecks.Run();
         Console.WriteLine($"PASS: {_passed} managed checks (observer, protocol, delivery, adapter doubles). Unity/Harmony runtime not exercised.");

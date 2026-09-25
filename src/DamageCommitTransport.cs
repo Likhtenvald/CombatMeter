@@ -35,7 +35,7 @@ internal sealed class DamageCommitTransport
     private ZRoutedRpc _rpc;
     private WeakReference<ZNet> _blockedNet;
     private CommitSession _session;
-    // Temporary 4A legacy snapshot compatibility path; clusters never feed this manager.
+    // Transitional legacy diagnostics/DeathObservation only; never a snapshot source.
     private EncounterManager _encounter;
     private CombatClusterManager _clusters;
     private MagicAttributionResolver _attribution;
@@ -253,14 +253,22 @@ internal sealed class DamageCommitTransport
     private void PublishSnapshot(double now)
     {
         _nextSnapshotAt = now + SnapshotIntervalSeconds;
-        CombatSnapshot snapshot = CombatSnapshotBuilder.Build(_session.Peer, _snapshotEpoch,
-            checked(++_snapshotSequence), _encounter, now);
+        long sequence = checked(++_snapshotSequence); // Once per cycle, shared by all recipients.
+        CombatSnapshot snapshot = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch,
+            sequence, _clusters, HostPlayerIdentity.ResolveLocal(_session.Peer), now);
         SnapshotApplyResult local = _snapshotStore.Apply(snapshot, _session.Peer, _session.Peer);
         if (local != SnapshotApplyResult.Accepted) throw new InvalidOperationException("LocalSnapshot" + local);
         LogSnapshotChange("CombatSnapshotAppliedLocal", snapshot);
-        if (!ZNet.IsSinglePlayer)
-            _rpc.InvokeRoutedRPC(ZRoutedRpc.Everybody, SnapshotRpc, new ZPackage(CombatSnapshotCodec.Encode(snapshot)));
-        LogSnapshotChange("CombatSnapshotPublished", snapshot);
+        if (ZNet.IsSinglePlayer) return;
+        var sent = new System.Collections.Generic.HashSet<long>();
+        foreach (ZNetPeer peer in _net.GetPeers())
+        {
+            if (peer == null || !peer.IsReady() || peer.m_uid == 0 || peer.m_uid == _session.Peer || !sent.Add(peer.m_uid)) continue;
+            CombatSnapshot remote = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch,
+                sequence, _clusters, HostPlayerIdentity.ResolveRemote(peer.m_uid), now);
+            _rpc.InvokeRoutedRPC(peer.m_uid, SnapshotRpc, new ZPackage(CombatSnapshotCodec.Encode(remote)));
+            LogSnapshotChange("CombatSnapshotPublished", remote);
+        }
     }
 
     private void ReceiveSnapshot(ZRoutedRpc rpc, long sender, ZPackage package)

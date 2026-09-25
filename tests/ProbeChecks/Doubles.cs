@@ -93,6 +93,8 @@ internal sealed class ZNet : EngineObject
     internal bool IsServer() => Server;
     internal bool IsDedicated() => Dedicated;
     internal static bool IsSinglePlayer => instance.SinglePlayer;
+    internal readonly List<ZNetPeer> Peers = new List<ZNetPeer>();
+    internal List<ZNetPeer> GetPeers() => Peers;
     internal ZNetPeer ServerPeer;
     internal ZNetPeer GetServerPeer() => ServerPeer;
 }
@@ -100,7 +102,8 @@ internal sealed class ZNet : EngineObject
 internal sealed class ZNetPeer
 {
     internal long m_uid;
-    internal bool IsReady() => true;
+    internal bool Ready = true;
+    internal bool IsReady() => Ready && m_uid != 0;
 }
 
 internal sealed class ZPackage
@@ -139,6 +142,9 @@ internal class Character : EngineObject
 
 internal sealed class Player : Character
 {
+    internal static Player m_localPlayer;
+    internal static readonly List<Player> Instances = new List<Player>();
+    internal static List<Player> GetAllPlayers() => Instances;
     internal long PlayerId = 9223372036854775806;
     internal string PlayerName = "Tester";
     internal long GetPlayerID() => PlayerId;
