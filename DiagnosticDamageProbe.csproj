@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>CombatMeter</AssemblyName>
+    <RootNamespace>DiagnosticDamageProbe</RootNamespace>
+    <Version>0.11.2</Version>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Explicit compile references only; the game/loader provide their dependency graph.
+         Do not mix Unity's transitive framework DLLs with the SDK's netstandard ref pack. -->
+    <_FindDependencies>false</_FindDependencies>
+    <BaseOutputPath>outputs/build/</BaseOutputPath>
+    <RestoreConfigFile>$(MSBuildProjectDirectory)/NuGet.Config</RestoreConfigFile>
+    <ValheimManagedDir Condition="'$(ValheimManagedDir)' == ''">C:/Program Files (x86)/Steam/steamapps/common/Valheim/valheim_Data/Managed</ValheimManagedDir>
+    <BepInExCoreDir Condition="'$(BepInExCoreDir)' == ''">$(MSBuildProjectDirectory)/work/dependencies/BepInEx-5.4.23.5</BepInExCoreDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/**/*.cs" />
+    <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+    <Reference Include="assembly_valheim" HintPath="$(ValheimManagedDir)/assembly_valheim.dll" Private="false" />
+    <Reference Include="assembly_utils" HintPath="$(ValheimManagedDir)/assembly_utils.dll" Private="false" />
+    <Reference Include="UnityEngine" HintPath="$(ValheimManagedDir)/UnityEngine.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(ValheimManagedDir)/UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(ValheimManagedDir)/UnityEngine.UI.dll" Private="false" />
+    <Reference Include="UnityEngine.UIModule" HintPath="$(ValheimManagedDir)/UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(ValheimManagedDir)/UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.InputLegacyModule" HintPath="$(ValheimManagedDir)/UnityEngine.InputLegacyModule.dll" Private="false" />
+    <Reference Include="BepInEx" HintPath="$(BepInExCoreDir)/BepInEx.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(BepInExCoreDir)/0Harmony.dll" Private="false" />
+  </ItemGroup>
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs"
+      Lines="namespace DiagnosticDamageProbe { internal static class BuildInfo { internal const string Version = &quot;$(Version)&quot;%3B } }"
+      Overwrite="true" />
+  </Target>
+  <Target Name="CheckLocalReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(ValheimManagedDir)/assembly_valheim.dll')" Text="Valheim assemblies missing. Set -p:ValheimManagedDir=path/to/Managed." />
+    <Error Condition="!Exists('$(BepInExCoreDir)/BepInEx.dll') Or !Exists('$(BepInExCoreDir)/0Harmony.dll')" Text="BepInEx references missing. Run scripts/Prepare-Dependencies.ps1 or set -p:BepInExCoreDir=path/to/BepInEx/core." />
+  </Target>
+</Project>

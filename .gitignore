@@ -1,0 +1,33 @@
+# Build and generated output
+bin/
+obj/
+outputs/
+TestResults/
+coverage/
+*.dll
+*.pdb
+*.zip
+
+# Local development dependencies and scratch data
+work/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*~
+
+# IDE and user-specific state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local environment files
+.env
+.env.*
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db

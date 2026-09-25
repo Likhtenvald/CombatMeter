@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RestoreConfigFile>$(MSBuildProjectDirectory)/../../NuGet.Config</RestoreConfigFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Exercise the actual observer code; do NOT reference the production plugin/game here. -->
+    <Compile Include="../../src/ApplyDamagePatch.cs" Link="Production/ApplyDamagePatch.cs" />
+    <Compile Include="../../src/LogFields.cs" Link="Production/LogFields.cs" />
+    <Compile Include="../../src/Transport/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Statistics/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Encounter/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Configuration/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Attribution/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Snapshot/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/UI/CombatMeterViewModel.cs" Link="Production/CombatMeterViewModel.cs" />
+    <Compile Include="../../src/UI/CombatMeterLayout.cs" Link="Production/CombatMeterLayout.cs" />
+    <Compile Include="../../src/DamageCommitTransport.cs" Link="Production/DamageCommitTransport.cs" />
+  </ItemGroup>
+</Project>
