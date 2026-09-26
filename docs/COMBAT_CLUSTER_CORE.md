@@ -9,10 +9,10 @@ Deaths, periodic updates and session teardown also reach the cluster core.
 Clients do not construct the cluster core. Existing dedicated-server restrictions
 are unchanged. Attribution resolution and pending-event handling are unchanged.
 
-The legacy manager remains the sole input to CombatSnapshotBuilder. Snapshot v1,
-UI, global broadcast and player colors are unchanged. There is no cluster selection,
-aggregate snapshot or per-peer routing. This compatibility path is temporary until
-4B/4C, and must not be mistaken for cluster-aware runtime presentation.
+In the original 4A milestone, the legacy manager remained the snapshot source.
+As of 4C / 0.12.0, per-player routing selects the cluster for each recipient and
+snapshots use that cluster exclusively. The legacy manager remains only for
+transitional diagnostics and DeathObservation; see PEER_SPECIFIC_SNAPSHOTS.md.
 
 ## Types and identity
 

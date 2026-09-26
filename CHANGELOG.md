@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0 — Combat clusters and multiplayer routing
+
+- Added independent combat clusters based on actual PvE interactions; unrelated simultaneous fights no longer share one global table.
+- Added per-player authoritative snapshots from the Listen Host, with clusters merging when combat interactions connect them.
+- Improved encounter finishing and stale HUD clearing through cluster routing and empty snapshots for players without a current cluster.
+- Kept Recovery local to each combat cluster, including independent Recovery periods for multiple dead players.
+- Added deterministic player colors to Damage contribution bars.
+- Excluded Fall, Drowning, and Smoke from combat statistics and from starting, extending, or resuming encounters and Recovery.
+- Added lightweight performance instrumentation with a separate opt-in diagnostic switch, disabled by default; disabled telemetry bypasses measurement and counters.
+- Successfully validated the peer-specific snapshots, environmental policy, and player-color runtime candidate in a two-PC Listen Host multiplayer session.
+
 ## 0.11.2 — Public test build
 
 - Added synchronized Damage Done, DPS, contribution percentage, contribution bars, and Damage Taken.

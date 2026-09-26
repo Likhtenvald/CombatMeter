@@ -4,7 +4,7 @@
     <LangVersion>10.0</LangVersion>
     <AssemblyName>CombatMeter</AssemblyName>
     <RootNamespace>DiagnosticDamageProbe</RootNamespace>
-    <Version>0.11.2</Version>
+    <Version>0.12.0</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Explicit compile references only; the game/loader provide their dependency graph.
          Do not mix Unity's transitive framework DLLs with the SDK's netstandard ref pack. -->

@@ -1,6 +1,6 @@
 {
   "name": "CombatMeter",
-  "version_number": "0.11.2",
+  "version_number": "0.12.0",
   "website_url": "https://github.com/Likhtenvald/CombatMeter",
   "description": "Multiplayer combat meter for Valheim showing damage, DPS, contribution, and damage taken.",
   "dependencies": [
