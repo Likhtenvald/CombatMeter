@@ -319,6 +319,14 @@ public sealed class Plugin : BaseUnityPlugin
         catch (Exception ex) { Warn($"DamageCommitTransportFailure exception={ex.GetType().Name}"); }
     }
 
+    internal static bool PerformanceLoggingEnabled => LoggingEnabled || LifecycleLoggingEnabled || MagicLoggingEnabled ||
+        EnableTransportDiagnosticLogging?.Value == true;
+    internal static void PerformanceLog(string message)
+    {
+        if (!PerformanceLoggingEnabled) return;
+        try { ProbeLog?.LogInfo(message); }
+        catch { /* Diagnostics cannot change gameplay/delivery. */ }
+    }
     internal static void TransportLog(string message)
     {
         if (EnableTransportDiagnosticLogging?.Value != true) return;

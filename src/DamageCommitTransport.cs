@@ -8,6 +8,7 @@ using DiagnosticDamageProbe.Statistics;
 using DiagnosticDamageProbe.Encounter;
 using DiagnosticDamageProbe.Attribution;
 using DiagnosticDamageProbe.Snapshot;
+using DiagnosticDamageProbe.Diagnostics;
 
 namespace DiagnosticDamageProbe;
 
@@ -38,6 +39,7 @@ internal sealed class DamageCommitTransport
     // Transitional legacy diagnostics/DeathObservation only; never a snapshot source.
     private EncounterManager _encounter;
     private CombatClusterManager _clusters;
+    private CombatMeterPerformance _performance;
     private MagicAttributionResolver _attribution;
     private EventSequence _attributionSequence;
     private double _clockAnchorMonotonic;
@@ -113,6 +115,7 @@ internal sealed class DamageCommitTransport
             _encounterSettings = host ? new EncounterSettings(ReadSoftTimeout(), ReadRecoveryTimeout(), ReadDpsIdleTimeout()) : null;
             _encounter = host ? new EncounterManager(new CombatStatisticsAggregator(), _encounterSettings, Plugin.EncounterLog) : null;
             _clusters = host ? new CombatClusterManager(_encounterSettings) : null;
+            _performance = host ? new CombatMeterPerformance(Stopwatch.GetTimestamp()) : null;
             if (host) LogEncounterSettings("CombatEncounterSettings");
             _attribution = host ? new MagicAttributionResolver() : null;
             _attributionSequence = new EventSequence(peer, Guid.NewGuid());
@@ -183,6 +186,7 @@ internal sealed class DamageCommitTransport
 
     internal EncounterManager Encounter => _encounter;
     internal CombatClusterManager Clusters => _clusters;
+    internal CombatMeterPerformance Performance => _performance;
     internal MagicAttributionResolver Attribution => _attribution;
     internal int AttributionPendingCount => _attributionOutbox.Count;
     internal CombatSnapshotStore SnapshotStore => _snapshotStore;
@@ -192,6 +196,7 @@ internal sealed class DamageCommitTransport
     {
         if (!EnsureSession() || observedPeer != _session.Peer)
         { Plugin.Warn("DamageCommitObservationRejected reason=NoActiveSession"); return; }
+        if (_performance != null) _performance.DamageObserved++;
         _session.Observe(facts, loss, DateTime.UtcNow.Ticks);
         Pump(false);
     }
@@ -230,6 +235,7 @@ internal sealed class DamageCommitTransport
             for (int i = _pendingDot.Count - 1; i >= 0; i--)
                 if (now >= _pendingDot[i].Expires) { var p = _pendingDot[i]; _pendingDot.RemoveAt(i); ProcessAttributed(p.Commit, p.AcceptedAt); }
             if (publishSnapshot && now >= _nextSnapshotAt) PublishSnapshot(now);
+            if (publishSnapshot) ReportPerformance();
         }
     }
 
@@ -252,25 +258,57 @@ internal sealed class DamageCommitTransport
 
     private void PublishSnapshot(double now)
     {
-        _nextSnapshotAt = now + SnapshotIntervalSeconds;
-        long sequence = checked(++_snapshotSequence); // Once per cycle, shared by all recipients.
-        CombatSnapshot snapshot = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch,
-            sequence, _clusters, HostPlayerIdentity.ResolveLocal(_session.Peer), now);
-        SnapshotApplyResult local = _snapshotStore.Apply(snapshot, _session.Peer, _session.Peer);
-        if (local != SnapshotApplyResult.Accepted) throw new InvalidOperationException("LocalSnapshot" + local);
-        LogSnapshotChange("CombatSnapshotAppliedLocal", snapshot);
-        if (ZNet.IsSinglePlayer) return;
-        var sent = new System.Collections.Generic.HashSet<long>();
-        foreach (ZNetPeer peer in _net.GetPeers())
+        long started = Stopwatch.GetTimestamp();
+        try
         {
-            if (peer == null || !peer.IsReady() || peer.m_uid == 0 || peer.m_uid == _session.Peer || !sent.Add(peer.m_uid)) continue;
-            CombatSnapshot remote = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch,
-                sequence, _clusters, HostPlayerIdentity.ResolveRemote(peer.m_uid), now);
-            _rpc.InvokeRoutedRPC(peer.m_uid, SnapshotRpc, new ZPackage(CombatSnapshotCodec.Encode(remote)));
-            LogSnapshotChange("CombatSnapshotPublished", remote);
+            _nextSnapshotAt = now + SnapshotIntervalSeconds;
+            _performance.ReadyPeers = 0;
+            long sequence = checked(++_snapshotSequence); // Once per cycle, shared by all recipients.
+            CombatSnapshot snapshot = BuildRecipientSnapshot(sequence, ResolveSnapshotPlayer(_session.Peer, true), now);
+            SnapshotApplyResult local = _snapshotStore.Apply(snapshot, _session.Peer, _session.Peer);
+            if (local != SnapshotApplyResult.Accepted) throw new InvalidOperationException("LocalSnapshot" + local);
+            LogSnapshotChange("CombatSnapshotAppliedLocal", snapshot);
+            if (ZNet.IsSinglePlayer) return;
+            var sent = new System.Collections.Generic.HashSet<long>();
+            foreach (ZNetPeer peer in _net.GetPeers())
+            {
+                if (peer == null || !peer.IsReady() || peer.m_uid == 0 || peer.m_uid == _session.Peer || !sent.Add(peer.m_uid)) continue;
+                _performance.ReadyPeers++;
+                CombatSnapshot remote = BuildRecipientSnapshot(sequence, ResolveSnapshotPlayer(peer.m_uid, false), now);
+                long serializationStart = Stopwatch.GetTimestamp();
+                var package = new ZPackage(CombatSnapshotCodec.Encode(remote));
+                _performance.Serialization.Record(Stopwatch.GetTimestamp() - serializationStart);
+                _rpc.InvokeRoutedRPC(peer.m_uid, SnapshotRpc, package);
+                _performance.RecordSend(package.Size());
+                LogSnapshotChange("CombatSnapshotPublished", remote);
+            }
+
         }
+        finally { _performance.SnapshotCycle.Record(Stopwatch.GetTimestamp() - started); }
     }
 
+    private long? ResolveSnapshotPlayer(long peer, bool local)
+    {
+        long started = Stopwatch.GetTimestamp();
+        long? player = local ? HostPlayerIdentity.ResolveLocal(peer) : HostPlayerIdentity.ResolveRemote(peer);
+        _performance.RecordIdentity(Stopwatch.GetTimestamp() - started, player.HasValue);
+        return player;
+    }
+
+    private CombatSnapshot BuildRecipientSnapshot(long sequence, long? playerId, double now)
+    {
+        long started = Stopwatch.GetTimestamp();
+        CombatSnapshot snapshot = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch, sequence, _clusters, playerId, now);
+        _performance.RecordBuild(Stopwatch.GetTimestamp() - started, snapshot.EncounterState == EncounterState.NoEncounter);
+        return snapshot;
+    }
+
+    private void ReportPerformance(bool force = false)
+    {
+        if (_performance == null) return;
+        string report = _performance.TryReport(Stopwatch.GetTimestamp(), Plugin.PerformanceLoggingEnabled, _clusters.ActiveCount, force);
+        if (report != null) Plugin.PerformanceLog(report);
+    }
     private void ReceiveSnapshot(ZRoutedRpc rpc, long sender, ZPackage package)
     {
         if (_disposed || !ReferenceEquals(rpc, _rpc) || !EnsureSession() || _session.IsHost) return;
@@ -413,6 +451,7 @@ internal sealed class DamageCommitTransport
 
     private void AcceptForAttribution(DamageCommit commit)
     {
+        _performance.DamageAccepted++;
         double now = _now(); DamageFacts f = commit.Facts;
         if (f.Attacker == AttackerClass.NPC && !string.IsNullOrEmpty(f.AttackerZdoId) &&
             !_attribution.Summons.TryResolve(f.AttackerZdoId, out _) && _pendingSummon.Count < 256)
@@ -428,17 +467,23 @@ internal sealed class DamageCommitTransport
 
     private void ProcessAttributed(DamageCommit commit, double now)
     {
-        AttributedDamageEvent attributed = _attribution.Resolve(commit);
-        bool any = false; float sum = 0f;
-        foreach (DamagePortion p in attributed.DamageDone) { if (p.PlayerId.HasValue) any = true; sum += p.Damage; }
-        Plugin.MagicLog((any ? "MagicDamageAttributed" : "MagicDamageUnattributed") +
-            " event=" + commit.Id + " portions=" + attributed.DamageDone.Count + " sum=" + sum.ToString(CultureInfo.InvariantCulture));
-        if (commit.Facts.DotKind > 0)
-            Plugin.MagicLog("DotTickDistributed event=" + commit.Id + " kind=" + (DotKind)(commit.Facts.DotKind - 1) +
-                " effective=" + commit.EffectiveHpLoss.ToString(CultureInfo.InvariantCulture) + " portions=" + attributed.DamageDone.Count);
-        double eventTime = EventTime(commit);
-        _encounter.Accept(attributed, now, eventTime);
-        _clusters.Accept(attributed, now, eventTime);
+        long started = Stopwatch.GetTimestamp();
+        try
+        {
+            AttributedDamageEvent attributed = _attribution.Resolve(commit);
+            bool any = false; float sum = 0f;
+            foreach (DamagePortion p in attributed.DamageDone) { if (p.PlayerId.HasValue) any = true; sum += p.Damage; }
+            Plugin.MagicLog((any ? "MagicDamageAttributed" : "MagicDamageUnattributed") +
+                " event=" + commit.Id + " portions=" + attributed.DamageDone.Count + " sum=" + sum.ToString(CultureInfo.InvariantCulture));
+            if (commit.Facts.DotKind > 0)
+                Plugin.MagicLog("DotTickDistributed event=" + commit.Id + " kind=" + (DotKind)(commit.Facts.DotKind - 1) +
+                    " effective=" + commit.EffectiveHpLoss.ToString(CultureInfo.InvariantCulture) + " portions=" + attributed.DamageDone.Count);
+            double eventTime = EventTime(commit);
+            _encounter.Accept(attributed, now, eventTime);
+            if (_clusters.Accept(attributed, now, eventTime) == null) _performance.DamageIgnored++;
+
+        }
+        finally { _performance.CommitProcessing.Record(Stopwatch.GetTimestamp() - started); }
     }
 
     private double EventTime(DamageCommit commit)
@@ -454,6 +499,7 @@ internal sealed class DamageCommitTransport
         try
         {
             DamageCommit commit = CommitCodec.Decode(Bytes(package));
+            _performance.DamageObserved++;
             Acceptance result = _session.ProcessDamageCommit(commit, sender, CommitOrigin.Remote);
             // Reply only to the actual nonzero sender, never a payload-supplied destination/broadcast.
             if (sender != 0 && sender != _session.Peer)
@@ -504,6 +550,7 @@ internal sealed class DamageCommitTransport
 
     private void Close(string reason)
     {
+        ReportPerformance(true);
         _session?.Close(reason);
         _encounter?.Reset();
         _clusters?.Reset();
@@ -515,6 +562,7 @@ internal sealed class DamageCommitTransport
         _session = null;
         _encounter = null;
         _clusters = null;
+        _performance = null;
         _encounterSettings = null;
         _attribution = null;
         _attributionSequence = null;

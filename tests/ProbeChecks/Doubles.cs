@@ -24,6 +24,8 @@ namespace DiagnosticDamageProbe
     internal static class Plugin
     {
         internal static bool LoggingEnabled = true;
+        internal static bool PerformanceLoggingEnabled = false;
+        internal static void PerformanceLog(string message) { if (PerformanceLoggingEnabled) TransportMessages.Add(message); }
         internal static readonly string ProcessRunId = "test-process";
         internal static readonly TestLog ProbeLog = new TestLog();
         internal static readonly List<string> Warnings = new List<string>();

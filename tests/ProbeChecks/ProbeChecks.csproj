@@ -9,6 +9,7 @@
     <Compile Include="../../src/ApplyDamagePatch.cs" Link="Production/ApplyDamagePatch.cs" />
     <Compile Include="../../src/LogFields.cs" Link="Production/LogFields.cs" />
     <Compile Include="../../src/Transport/*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Diagnostics/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../src/Statistics/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../src/Encounter/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../src/Configuration/*.cs" Link="Production/%(Filename)%(Extension)" />
