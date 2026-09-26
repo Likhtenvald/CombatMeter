@@ -154,7 +154,8 @@ internal sealed class Player : Character
 internal sealed class HitData
 {
     internal enum DamageModifier { Normal }
-    internal enum HitType { PlayerHit, Burning, Poisoned, Fall }
+    // Exact values from the referenced Valheim HitData.HitType byte enum.
+    internal enum HitType : byte { Undefined = 0, EnemyHit = 1, PlayerHit = 2, Fall = 3, Drowning = 4, Burning = 5, Poisoned = 7, Smoke = 9, Tree = 13, Incinerator = 23 }
     internal struct DamageTypes
     {
         internal float m_damage, m_blunt, m_slash, m_pierce, m_chop, m_pickaxe;

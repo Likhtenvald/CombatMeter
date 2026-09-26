@@ -21,6 +21,7 @@ internal sealed class CombatStatisticsAggregator
     internal static PveClassification Classify(DamageCommit commit)
     {
         DamageFacts facts = commit.Facts;
+        if (IsNonCombatEnvironmentalHit(facts.HitType)) return PveClassification.Ignored;
         if (facts.VictimIsPlayer && facts.Attacker == AttackerClass.Player)
             return PveClassification.Ignored;
         if (!facts.VictimIsPlayer && facts.Attacker == AttackerClass.Player && facts.AttackerPlayerId.HasValue)
@@ -30,6 +31,14 @@ internal sealed class CombatStatisticsAggregator
         return PveClassification.Ignored;
     }
 
+    // Canonical HitData.HitType : byte from the referenced Valheim assembly:
+    // Fall=3, Drowning=4, Smoke=9. Keep this pure domain boundary free of Unity types.
+    // Explicit policy only: None/unresolved, combat DoT, Tree and Incinerator are not excluded.
+    private enum NonCombatEnvironmentalHit : byte { Fall = 3, Drowning = 4, Smoke = 9 }
+    private static bool IsNonCombatEnvironmentalHit(byte hitType) =>
+        hitType == (byte)NonCombatEnvironmentalHit.Fall ||
+        hitType == (byte)NonCombatEnvironmentalHit.Drowning ||
+        hitType == (byte)NonCombatEnvironmentalHit.Smoke;
     internal void Apply(PveClassification classification, float effectiveHpLoss)
     {
         if (classification.Kind == PveStatisticKind.DamageDone)
