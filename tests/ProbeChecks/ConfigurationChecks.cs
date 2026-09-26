@@ -11,7 +11,7 @@ internal static class ConfigurationChecks
     {
         Test("config 01: catalog contains every bound entry exactly once", () =>
         {
-            Eq(18, ConfigCatalog.Entries.Count); var keys = new HashSet<string>();
+            Eq(19, ConfigCatalog.Entries.Count); var keys = new HashSet<string>();
             foreach (ConfigDescriptor e in ConfigCatalog.Entries) True(keys.Add(e.Section + "/" + e.Key));
         });
         Test("config 02: combat settings are host authoritative", () =>

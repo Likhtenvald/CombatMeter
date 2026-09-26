@@ -39,7 +39,7 @@ internal sealed class CombatMeterPerformance
     { SnapshotsSent++; SnapshotBytesSent += packageBytes; SnapshotMaxBytes = Math.Max(SnapshotMaxBytes, packageBytes); }
 
     // Called from the existing host Update path, and once on close for the partial window.
-    // Disabled diagnostics still discard elapsed windows, with no report allocation.
+    // The transport bypasses this entirely when disabled and discards its window on toggle.
     internal string TryReport(long now, bool enabled, int activeClusters, bool force = false)
     {
         double seconds = (now - _windowStart) / (double)_frequency;

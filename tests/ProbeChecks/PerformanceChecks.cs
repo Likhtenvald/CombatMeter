@@ -1,5 +1,9 @@
 using System;
 using System.Globalization;
+using System.Diagnostics;
+using System.IO;
+using System.Text.RegularExpressions;
+using DiagnosticDamageProbe.Configuration;
 using System.Linq;
 using System.Collections.Generic;
 using DiagnosticDamageProbe;
@@ -118,10 +122,123 @@ internal static class PerformanceChecks
             try
             {
                 var h = new Host(); h.Hit(1001, 10); h.Adapter.Update(); Eq(0, PerfLines());
+                h.PerformanceTicks = Stopwatch.Frequency;
                 h.Adapter.Dispose(); Eq(1, PerfLines()); h.Adapter.Dispose(); Eq(1, PerfLines());
                 Plugin.PerformanceLoggingEnabled = false; var silent = new Host(); silent.Hit(1001, 10); silent.Adapter.Dispose(); Eq(1, PerfLines());
             } finally { Plugin.PerformanceLoggingEnabled = false; }
         });
+
+        Test("dedicated config defaults off and binds its own lifecycle", () =>
+        {
+            var entry = ConfigCatalog.Find("Diagnostics", "EnablePerformanceDiagnosticLogging");
+            Eq("false", entry.DefaultValue); True(entry.LiveUpdate); Eq(ConfigAuthority.Local, entry.Authority);
+            string source = PluginSource();
+            True(Regex.IsMatch(source, @"EnablePerformanceDiagnosticLogging\s*=\s*Config.Bind\(""Diagnostics"",\s*""EnablePerformanceDiagnosticLogging"",\s*false,"));
+            True(source.Contains("EnablePerformanceDiagnosticLogging.SettingChanged += OnPerformanceLoggingChanged;"));
+            True(source.Contains("EnablePerformanceDiagnosticLogging.SettingChanged -= OnPerformanceLoggingChanged;"));
+            True(source.Contains("EnablePerformanceDiagnosticLogging = null;"));
+        });
+        Test("production performance gate references only the dedicated flag", () =>
+        {
+            string expression = Regex.Match(PluginSource(), @"bool PerformanceLoggingEnabled\s*=>\s*([^;]+);").Groups[1].Value;
+            Eq("EnablePerformanceDiagnosticLogging?.Value == true", expression);
+        });
+        Test("legacy configs recognize opt-in and missing key remains absent", () =>
+        {
+            var old = LegacyConfigMigration.ParseKnown("[Diagnostics]\nEnableDiagnosticLogging=true");
+            True(!LegacyConfigMigration.TryGet(old, "Diagnostics", "EnablePerformanceDiagnosticLogging", out _));
+            var optIn = LegacyConfigMigration.ParseKnown("[Diagnostics]\nEnablePerformanceDiagnosticLogging=true");
+            True(LegacyConfigMigration.TryGet(optIn, "Diagnostics", "EnablePerformanceDiagnosticLogging", out var value)); Eq("true", value);
+        });
+        Test("disabled host bypasses every telemetry clock and counter path", () =>
+        {
+            Plugin.PerformanceLoggingEnabled = false; Plugin.TransportMessages.Clear();
+            var h = new Host(); h.Hit(1001, 10); h.Environment(HitData.HitType.Fall); h.RemoteHit();
+            h.Now = 61; h.Adapter.Update(); h.Adapter.Dispose();
+            Eq(0, h.PerformanceClockReads); Eq<CombatMeterPerformance>(null, h.Adapter.Performance); Eq(0, PerfLines());
+        });
+        Test("enabled host reports at sixty synthetic seconds with existing fields", () =>
+        {
+            Plugin.TransportMessages.Clear(); var h = new Host(); h.Hit(1001, 10); h.Adapter.Update();
+            h.PerformanceTicks = 59 * Stopwatch.Frequency; h.Adapter.Update(); Eq(0, PerfLines());
+            h.PerformanceTicks = 60 * Stopwatch.Frequency; h.Adapter.Update(); Eq(1, PerfLines());
+            var fields = Fields(Plugin.TransportMessages.Single(x => x.StartsWith("CombatMeterPerf ")));
+            Eq("60.000", fields["windowSeconds"]); Eq("1", fields["damageObserved"]); Eq("1", fields["commitCount"]);
+            Eq("2", fields["snapshotBuildCount"]); Eq("1", fields["activeSnapshots"]); Eq("1", fields["emptySnapshots"]);
+            Eq("1", fields["snapshotsSent"]); Eq(h.PayloadSizes.Single().ToString(CultureInfo.InvariantCulture), fields["bytesSent"]);
+            Eq(0L, h.Adapter.Performance.CommitProcessing.Count);
+        });
+        Test("enable starts clean and excludes disabled damage and elapsed time", () =>
+        {
+            Plugin.PerformanceLoggingEnabled = false; Plugin.TransportMessages.Clear();
+            var h = new Host(); h.Hit(1001, 10); h.PerformanceTicks = 100 * Stopwatch.Frequency; h.Toggle(true);
+            Eq(0L, h.Adapter.Performance.DamageObserved); Eq(0L, h.Adapter.Performance.CommitProcessing.Count);
+            h.Adapter.Update(); Eq(0, PerfLines());
+            h.PerformanceTicks = 159 * Stopwatch.Frequency; h.Adapter.Update(); Eq(0, PerfLines());
+            h.PerformanceTicks = 160 * Stopwatch.Frequency; h.Adapter.Update(); Eq(1, PerfLines());
+            Eq("0", Fields(Plugin.TransportMessages.Last(x => x.StartsWith("CombatMeterPerf ")))["damageAccepted"]);
+        });
+        Test("disable discards partial window immediately and close stays silent", () =>
+        {
+            Plugin.TransportMessages.Clear(); var h = new Host(); h.Hit(1001, 10);
+            var discarded = h.Adapter.Performance; int reads = h.PerformanceClockReads;
+            h.Toggle(false); Eq<CombatMeterPerformance>(null, h.Adapter.Performance); Eq(reads, h.PerformanceClockReads);
+            h.Hit(2002, 20); h.Adapter.Update(); h.Adapter.Dispose();
+            Eq(reads, h.PerformanceClockReads); Eq(1L, discarded.DamageAccepted); Eq(0, PerfLines());
+        });
+        Test("off then on between updates starts another fresh window", () =>
+        {
+            Plugin.TransportMessages.Clear(); var h = new Host(); h.Hit(1001, 10); var first = h.Adapter.Performance;
+            h.PerformanceTicks = 30 * Stopwatch.Frequency; h.Toggle(false); h.Toggle(true);
+            True(!ReferenceEquals(first, h.Adapter.Performance)); Eq(0L, h.Adapter.Performance.DamageAccepted);
+            h.PerformanceTicks = 60 * Stopwatch.Frequency; h.Adapter.Update(); Eq(0, PerfLines());
+            h.PerformanceTicks = 90 * Stopwatch.Frequency; h.Adapter.Update(); Eq(1, PerfLines());
+        });
+        Test("toggle during send cannot finish timing into discarded or new window", () =>
+        {
+            var h = new Host(); h.Hit(1001, 10); var first = h.Adapter.Performance;
+            var send = h.Rpc.Send;
+            h.Rpc.Send = (peer, name, package) => { send(peer, name, package); h.Toggle(false); h.Toggle(true); };
+            h.Adapter.Update(); var fresh = h.Adapter.Performance;
+            Eq(0L, first.SnapshotCycle.Count); Eq(0L, first.SnapshotsSent);
+            Eq(0L, fresh.SnapshotCycle.Count); Eq(0L, fresh.SnapshotsSent); Eq(0L, fresh.SnapshotBuild.Count);
+        });
+        foreach (bool enabled in new[] { false, true })
+        {
+            Test("routing isolation merge local apply and shared sequence with telemetry=" + enabled, () =>
+            {
+                Plugin.PerformanceLoggingEnabled = enabled;
+                var h = new Host(); h.Hit(1001, 10); h.Adapter.Update();
+                True(h.Adapter.SnapshotStore.TryGetLatest(out var local)); Eq(1L, local.Sequence);
+                Eq(EncounterState.NoEncounter, h.Remote.Last().EncounterState); Eq(local.Sequence, h.Remote.Last().Sequence);
+                h.Now = .5; h.Hit(2002, 20); h.Adapter.Update(); Eq(2, h.Adapter.Clusters.ActiveCount);
+                True(h.Adapter.SnapshotStore.TryGetLatest(out local)); Eq(1001L, local.Players.Single().PlayerId);
+                Eq(2002L, h.Remote.Last().Players.Single().PlayerId); Eq(local.Sequence, h.Remote.Last().Sequence);
+                h.Now = 1; h.Hit(1001, 20); h.Adapter.Update(); Eq(1, h.Adapter.Clusters.ActiveCount);
+                True(h.Adapter.SnapshotStore.TryGetLatest(out local)); Eq(2, local.Players.Count);
+                Eq(2, h.Remote.Last().Players.Count); Eq(local.Sequence, h.Remote.Last().Sequence);
+                Eq(12f, local.Players.Single(p => p.PlayerId == 1001).DamageDone);
+                Eq(6f, local.Players.Single(p => p.PlayerId == 2002).DamageDone);
+                // Fixture validates each actual RPC destination equals the nonzero remote peer.
+                if (!enabled) Eq(0, h.PerformanceClockReads);
+            });
+            Test("environmental and Recovery policy with telemetry=" + enabled, () =>
+            {
+                Plugin.PerformanceLoggingEnabled = enabled; var h = new Host();
+                foreach (var hit in new[] { HitData.HitType.Fall, HitData.HitType.Drowning, HitData.HitType.Smoke }) h.Environment(hit);
+                Eq(0, h.Adapter.Clusters.ActiveCount);
+                foreach (var hit in new[] { HitData.HitType.Poisoned, HitData.HitType.Burning, HitData.HitType.Tree, HitData.HitType.Incinerator }) h.Environment(hit);
+                True(h.Adapter.Clusters.TryGetClusterForPlayer(1001, out var cluster));
+                Eq(8f, cluster.Encounter.Statistics.Players.Single().DamageTaken);
+                h.Now = 1; h.Adapter.ObservePlayerDeath(1001); h.Now = 21; h.Adapter.Update();
+                Eq(EncounterState.Recovery, cluster.Encounter.State);
+                True(cluster.Encounter.TryGetRecoveryTicket(1001, out var ticket));
+                h.Environment(HitData.HitType.Smoke); Eq(EncounterState.Recovery, cluster.Encounter.State);
+                True(cluster.Encounter.TryGetRecoveryTicket(1001, out var after)); True(ReferenceEquals(ticket, after)); Eq(181d, after.ExpiryTime);
+                h.Now = 181; h.Adapter.Update(); Eq(0, h.Adapter.Clusters.ActiveCount);
+                if (!enabled) Eq(0, h.PerformanceClockReads);
+            });
+        }
         return _passed;
     }
     private static CombatMeterPerformance Perf() => new CombatMeterPerformance(0, 1000000);
@@ -131,6 +248,8 @@ internal static class PerformanceChecks
     private sealed class Host
     {
         internal double Now;
+        internal long PerformanceTicks;
+        internal int PerformanceClockReads;
         internal readonly DamageCommitTransport Adapter;
         internal readonly ZRoutedRpc Rpc = new ZRoutedRpc();
         internal readonly List<int> PayloadSizes = new List<int>();
@@ -143,11 +262,33 @@ internal static class PerformanceChecks
             Player.m_localPlayer.View.Zdo.Owner = 101; Player.Instances.Add(Player.m_localPlayer);
             var remote = new Player { PlayerId = 2002 }; remote.View.Zdo.Owner = 202; Player.Instances.Add(remote);
             Rpc.Send = (peer, name, package) => { if (name == DamageCommitTransport.SnapshotRpc) { Eq(202L, peer); PayloadSizes.Add(package.Size()); Remote.Add(CombatSnapshotCodec.Decode(package.GetArray())); } };
-            Adapter = new DamageCommitTransport(() => Now); Adapter.Bind(ZNet.instance);
+            Adapter = new DamageCommitTransport(() => Now, performanceTimestamp: () => { PerformanceClockReads++; return PerformanceTicks; }); Adapter.Bind(ZNet.instance);
         }
+        internal void Toggle(bool enabled) { Plugin.PerformanceLoggingEnabled = enabled; Adapter.RefreshPerformanceSettings(); }
+        internal void Environment(HitData.HitType hit) => Adapter.Observe(101,
+            new DamageFacts(99, 100, true, 1001, AttackerClass.None, null, (byte)hit, "P", ""), 2);
+        internal void RemoteHit() => Rpc.Handlers[DamageCommitTransport.CommitRpc](202, new ZPackage(CommitCodec.Encode(
+            new DamageCommit(new EventId(202, Guid.NewGuid(), 1), Facts(2002, 20), 4, DateTime.UtcNow.Ticks))));
         internal void Hit(long player, uint npc) => Adapter.Observe(101, Facts(player, npc), 6);
     }
-    private static void Test(string name, Action action) { action(); _passed++; Console.WriteLine("PASS performance: " + name); }
+    private static string PluginSource()
+    {
+        // ProbeChecks substitutes Plugin for adapter tests; audit the actual BepInEx binding separately.
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string path = Path.Combine(directory.FullName, "src", "Plugin.cs");
+            if (File.Exists(path)) return File.ReadAllText(path);
+            directory = directory.Parent;
+        }
+        throw new FileNotFoundException("Production Plugin.cs");
+    }
+    private static void Test(string name, Action action)
+    {
+        bool previous = Plugin.PerformanceLoggingEnabled;
+        try { Plugin.PerformanceLoggingEnabled = true; action(); _passed++; Console.WriteLine("PASS performance: " + name); }
+        finally { Plugin.PerformanceLoggingEnabled = previous; }
+    }
     private static void Eq<T>(T expected, T actual) { if (!Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}"); }
     private static void True(bool value) { if (!value) throw new Exception("Performance assertion failed"); }
 }

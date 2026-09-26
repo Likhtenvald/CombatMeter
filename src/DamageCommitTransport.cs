@@ -40,6 +40,7 @@ internal sealed class DamageCommitTransport
     private EncounterManager _encounter;
     private CombatClusterManager _clusters;
     private CombatMeterPerformance _performance;
+    private readonly Func<long> _performanceTimestamp;
     private MagicAttributionResolver _attribution;
     private EventSequence _attributionSequence;
     private double _clockAnchorMonotonic;
@@ -64,12 +65,13 @@ internal sealed class DamageCommitTransport
     private EncounterSettings _encounterSettings;
 
     internal DamageCommitTransport(Func<double> now = null, Func<double> softTimeout = null,
-        Func<double> recoveryTimeout = null, Func<double> dpsIdleTimeout = null)
+        Func<double> recoveryTimeout = null, Func<double> dpsIdleTimeout = null, Func<long> performanceTimestamp = null)
     {
         _now = now ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
         _softTimeout = softTimeout;
         _recoveryTimeout = recoveryTimeout;
         _dpsIdleTimeout = dpsIdleTimeout;
+        _performanceTimestamp = performanceTimestamp;
     }
 
     internal void Bind(ZNet net)
@@ -115,7 +117,6 @@ internal sealed class DamageCommitTransport
             _encounterSettings = host ? new EncounterSettings(ReadSoftTimeout(), ReadRecoveryTimeout(), ReadDpsIdleTimeout()) : null;
             _encounter = host ? new EncounterManager(new CombatStatisticsAggregator(), _encounterSettings, Plugin.EncounterLog) : null;
             _clusters = host ? new CombatClusterManager(_encounterSettings) : null;
-            _performance = host ? new CombatMeterPerformance(Stopwatch.GetTimestamp()) : null;
             if (host) LogEncounterSettings("CombatEncounterSettings");
             _attribution = host ? new MagicAttributionResolver() : null;
             _attributionSequence = new EventSequence(peer, Guid.NewGuid());
@@ -138,6 +139,7 @@ internal sealed class DamageCommitTransport
                 .Text("SourceEpoch", _session.Sequence.Epoch.ToString("N"))
                 .Flag("IsHost", host));
         }
+        RefreshPerformanceSettings();
         return true;
     }
 
@@ -196,7 +198,8 @@ internal sealed class DamageCommitTransport
     {
         if (!EnsureSession() || observedPeer != _session.Peer)
         { Plugin.Warn("DamageCommitObservationRejected reason=NoActiveSession"); return; }
-        if (_performance != null) _performance.DamageObserved++;
+        CombatMeterPerformance performance = GetPerformance();
+        if (performance != null) performance.DamageObserved++;
         _session.Observe(facts, loss, DateTime.UtcNow.Ticks);
         Pump(false);
     }
@@ -258,11 +261,12 @@ internal sealed class DamageCommitTransport
 
     private void PublishSnapshot(double now)
     {
-        long started = Stopwatch.GetTimestamp();
+        CombatMeterPerformance performance = GetPerformance();
+        long started = performance != null ? PerformanceTimestamp() : 0;
         try
         {
             _nextSnapshotAt = now + SnapshotIntervalSeconds;
-            _performance.ReadyPeers = 0;
+            if (IsCurrentPerformance(performance)) performance.ReadyPeers = 0;
             long sequence = checked(++_snapshotSequence); // Once per cycle, shared by all recipients.
             CombatSnapshot snapshot = BuildRecipientSnapshot(sequence, ResolveSnapshotPlayer(_session.Peer, true), now);
             SnapshotApplyResult local = _snapshotStore.Apply(snapshot, _session.Peer, _session.Peer);
@@ -273,40 +277,66 @@ internal sealed class DamageCommitTransport
             foreach (ZNetPeer peer in _net.GetPeers())
             {
                 if (peer == null || !peer.IsReady() || peer.m_uid == 0 || peer.m_uid == _session.Peer || !sent.Add(peer.m_uid)) continue;
-                _performance.ReadyPeers++;
+                if (IsCurrentPerformance(performance)) performance.ReadyPeers++;
                 CombatSnapshot remote = BuildRecipientSnapshot(sequence, ResolveSnapshotPlayer(peer.m_uid, false), now);
-                long serializationStart = Stopwatch.GetTimestamp();
+                long serializationStart = IsCurrentPerformance(performance) ? PerformanceTimestamp() : 0;
                 var package = new ZPackage(CombatSnapshotCodec.Encode(remote));
-                _performance.Serialization.Record(Stopwatch.GetTimestamp() - serializationStart);
+                if (IsCurrentPerformance(performance)) performance.Serialization.Record(PerformanceTimestamp() - serializationStart);
                 _rpc.InvokeRoutedRPC(peer.m_uid, SnapshotRpc, package);
-                _performance.RecordSend(package.Size());
+                if (IsCurrentPerformance(performance)) performance.RecordSend(package.Size());
                 LogSnapshotChange("CombatSnapshotPublished", remote);
             }
 
         }
-        finally { _performance.SnapshotCycle.Record(Stopwatch.GetTimestamp() - started); }
+        finally { if (IsCurrentPerformance(performance)) performance.SnapshotCycle.Record(PerformanceTimestamp() - started); }
     }
 
     private long? ResolveSnapshotPlayer(long peer, bool local)
     {
-        long started = Stopwatch.GetTimestamp();
+        CombatMeterPerformance performance = GetPerformance();
+        long started = performance != null ? PerformanceTimestamp() : 0;
         long? player = local ? HostPlayerIdentity.ResolveLocal(peer) : HostPlayerIdentity.ResolveRemote(peer);
-        _performance.RecordIdentity(Stopwatch.GetTimestamp() - started, player.HasValue);
+        if (IsCurrentPerformance(performance)) performance.RecordIdentity(PerformanceTimestamp() - started, player.HasValue);
         return player;
     }
 
     private CombatSnapshot BuildRecipientSnapshot(long sequence, long? playerId, double now)
     {
-        long started = Stopwatch.GetTimestamp();
+        CombatMeterPerformance performance = GetPerformance();
+        long started = performance != null ? PerformanceTimestamp() : 0;
         CombatSnapshot snapshot = CombatSnapshotBuilder.ForPlayer(_session.Peer, _snapshotEpoch, sequence, _clusters, playerId, now);
-        _performance.RecordBuild(Stopwatch.GetTimestamp() - started, snapshot.EncounterState == EncounterState.NoEncounter);
+        if (IsCurrentPerformance(performance)) performance.RecordBuild(PerformanceTimestamp() - started, snapshot.EncounterState == EncounterState.NoEncounter);
         return snapshot;
     }
 
+    // SettingChanged also calls this so even an off/on toggle between updates discards the old window.
+    // No clock read or telemetry allocation while disabled or on clients.
+    internal void RefreshPerformanceSettings()
+    {
+        if (!Plugin.PerformanceLoggingEnabled || _session?.IsHost != true)
+            _performance = null;
+        else if (_performance == null)
+            _performance = new CombatMeterPerformance(PerformanceTimestamp());
+    }
+
+    private CombatMeterPerformance GetPerformance()
+    {
+        RefreshPerformanceSettings();
+        return _performance;
+    }
+
+    // A synchronous callback may toggle diagnostics during a measured call.
+    // Never finish a sample into a discarded or newly enabled window.
+    private bool IsCurrentPerformance(CombatMeterPerformance performance) =>
+        performance != null && Plugin.PerformanceLoggingEnabled && ReferenceEquals(performance, _performance);
+
+    private long PerformanceTimestamp() => _performanceTimestamp?.Invoke() ?? Stopwatch.GetTimestamp();
+
     private void ReportPerformance(bool force = false)
     {
-        if (_performance == null) return;
-        string report = _performance.TryReport(Stopwatch.GetTimestamp(), Plugin.PerformanceLoggingEnabled, _clusters.ActiveCount, force);
+        CombatMeterPerformance performance = GetPerformance();
+        if (performance == null) return;
+        string report = performance.TryReport(PerformanceTimestamp(), true, _clusters.ActiveCount, force);
         if (report != null) Plugin.PerformanceLog(report);
     }
     private void ReceiveSnapshot(ZRoutedRpc rpc, long sender, ZPackage package)
@@ -451,7 +481,8 @@ internal sealed class DamageCommitTransport
 
     private void AcceptForAttribution(DamageCommit commit)
     {
-        _performance.DamageAccepted++;
+        CombatMeterPerformance performance = GetPerformance();
+        if (performance != null) performance.DamageAccepted++;
         double now = _now(); DamageFacts f = commit.Facts;
         if (f.Attacker == AttackerClass.NPC && !string.IsNullOrEmpty(f.AttackerZdoId) &&
             !_attribution.Summons.TryResolve(f.AttackerZdoId, out _) && _pendingSummon.Count < 256)
@@ -467,7 +498,8 @@ internal sealed class DamageCommitTransport
 
     private void ProcessAttributed(DamageCommit commit, double now)
     {
-        long started = Stopwatch.GetTimestamp();
+        CombatMeterPerformance performance = GetPerformance();
+        long started = performance != null ? PerformanceTimestamp() : 0;
         try
         {
             AttributedDamageEvent attributed = _attribution.Resolve(commit);
@@ -480,10 +512,10 @@ internal sealed class DamageCommitTransport
                     " effective=" + commit.EffectiveHpLoss.ToString(CultureInfo.InvariantCulture) + " portions=" + attributed.DamageDone.Count);
             double eventTime = EventTime(commit);
             _encounter.Accept(attributed, now, eventTime);
-            if (_clusters.Accept(attributed, now, eventTime) == null) _performance.DamageIgnored++;
+            if (_clusters.Accept(attributed, now, eventTime) == null && IsCurrentPerformance(performance)) performance.DamageIgnored++;
 
         }
-        finally { _performance.CommitProcessing.Record(Stopwatch.GetTimestamp() - started); }
+        finally { if (IsCurrentPerformance(performance)) performance.CommitProcessing.Record(PerformanceTimestamp() - started); }
     }
 
     private double EventTime(DamageCommit commit)
@@ -499,7 +531,8 @@ internal sealed class DamageCommitTransport
         try
         {
             DamageCommit commit = CommitCodec.Decode(Bytes(package));
-            _performance.DamageObserved++;
+            CombatMeterPerformance performance = GetPerformance();
+            if (performance != null) performance.DamageObserved++;
             Acceptance result = _session.ProcessDamageCommit(commit, sender, CommitOrigin.Remote);
             // Reply only to the actual nonzero sender, never a payload-supplied destination/broadcast.
             if (sender != 0 && sender != _session.Peer)

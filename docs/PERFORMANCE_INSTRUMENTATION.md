@@ -5,22 +5,36 @@ The uninstrumented runtime DLL is retained separately for an eventual A/B test.
 
 ## Activation and reporting
 
-CombatMeterPerf is emitted through the existing plugin logger when any existing
-Diagnostics logging switch is enabled (general, transport, lifecycle or magic).
-No new configuration is added and no switches are automatically enabled.
-If all diagnostics are disabled, there is no performance log output.
+Performance diagnostics are **OFF by default** and require their own opt-in:
 
-Only host sessions own counters. The normal host Update path checks a 60-second
-Stopwatch window; there are no threads, Tasks or timer callbacks. At close, a final
-partial window reports its actual elapsed duration. Counters and max samples reset
-after every window, even if logging is disabled. Gameplay state is never reset by
-telemetry. There is no per-event performance log.
+    [Diagnostics]
+    EnablePerformanceDiagnosticLogging = false
 
-Primitive counters and timing structs are allocated once per host session. Event
-measurement uses Stopwatch.GetTimestamp and integer arithmetic; formatting and
-StringBuilder allocation happen only at report time. No sample history, percentile
-buffers or per-peer telemetry dictionaries exist. Existing gameplay allocations,
-identity lookups, collections and algorithms are deliberately unchanged.
+Set this key to true on the host to collect and emit CombatMeterPerf through the
+existing plugin logger. General, transport, lifecycle and magic diagnostics do not
+enable performance instrumentation. Their defaults and behavior are unchanged.
+
+The key can be toggled live. Enabling starts a fresh 60-second Stopwatch window,
+excluding all disabled time and activity. Disabling immediately discards the partial
+window without emitting a line. Re-enabling starts another clean window, even when
+both changes happen between Updates. A session/world close emits a final partial
+window with its actual duration only when performance diagnostics remain enabled.
+
+Disabled hot paths bypass telemetry counters, timestamp reads, payload-size reads
+for telemetry, report formatting and StringBuilder allocations. Only cheap setting
+and window checks remain. Gameplay's existing monotonic clock is unaffected.
+Clients do not allocate host telemetry state, even with the setting enabled.
+
+The normal host Update path checks the window; there are no threads, Tasks or timer
+callbacks. Counters and maxima reset after each report. Gameplay state is never
+reset by telemetry. There is no per-event performance log.
+
+Primitive counters and timing structs are allocated once when an enabled host
+window is started (and again after re-enabling), not per event. Measurement uses
+Stopwatch.GetTimestamp and integer arithmetic; formatting happens only at report
+time. No sample history, percentile buffers or per-peer telemetry dictionaries exist.
+Existing gameplay allocations, identity lookups, collections and algorithms remain
+unchanged. All metric definitions below are unchanged.
 
 ## Exact metric boundaries
 
@@ -64,7 +78,9 @@ Existing logging cost is part of the baseline, so compare runs with the same fla
 
 ## Verification and invariants
 
-434 existing checks plus 18 deterministic telemetry checks = 452. Tests supply
+The previous baseline was 452 checks. Additional opt-in regressions cover disabled
+hot paths with a counting synthetic clock, live toggles, partial close, independent
+config binding and both enabled/disabled gameplay paths. Tests supply
 synthetic ticks for arithmetic/report tests and inspect functional counters in real
 adapter paths. No assertion depends on operation speed. Coverage includes reset,
 invariant formatting, byte sizes, local exclusion, identity failures, shared

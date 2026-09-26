@@ -27,6 +27,7 @@ public sealed class Plugin : BaseUnityPlugin
     internal static ConfigEntry<bool> EnableTransportDiagnosticLogging;
     internal static ConfigEntry<bool> EnableLifecycleDiagnosticLogging;
     internal static ConfigEntry<bool> EnableMagicAttributionDiagnosticLogging;
+    internal static ConfigEntry<bool> EnablePerformanceDiagnosticLogging;
     internal static ConfigEntry<bool> UiEnabled;
     internal static ConfigEntry<KeyboardShortcut> UiToggleKey;
     internal static ConfigEntry<KeyboardShortcut> UiEditModeKey;
@@ -68,6 +69,9 @@ public sealed class Plugin : BaseUnityPlugin
             "Logs Player death, respawn and instance lifecycle candidates on this process only. Does not update encounters.");
         EnableMagicAttributionDiagnosticLogging = Config.Bind("Diagnostics", "EnableMagicAttributionDiagnosticLogging", false,
             "Logs summoned-root and elemental DoT provenance candidates on this process only. Does not change attribution.");
+        EnablePerformanceDiagnosticLogging = Config.Bind("Diagnostics", "EnablePerformanceDiagnosticLogging", false,
+            "Collects and logs aggregated CombatMeter performance metrics on the host. Disabled by default. Does not change combat, routing, snapshots or gameplay.");
+        EnablePerformanceDiagnosticLogging.SettingChanged += OnPerformanceLoggingChanged;
         UiEnabled = Config.Bind("UI", "UI Enabled", true, "Shows the Combat Meter on this client only.");
         UiToggleKey = Config.Bind("UI", "Toggle Key", new KeyboardShortcut(KeyCode.F8),
             "Shows or hides the Combat Meter on this client only. New snapshots do not override a manual hide.");
@@ -153,6 +157,7 @@ public sealed class Plugin : BaseUnityPlugin
         applied += Apply(values, "Diagnostics", "EnableTransportDiagnosticLogging", EnableTransportDiagnosticLogging);
         applied += Apply(values, "Diagnostics", "EnableLifecycleDiagnosticLogging", EnableLifecycleDiagnosticLogging);
         applied += Apply(values, "Diagnostics", "EnableMagicAttributionDiagnosticLogging", EnableMagicAttributionDiagnosticLogging);
+        applied += Apply(values, "Diagnostics", "EnablePerformanceDiagnosticLogging", EnablePerformanceDiagnosticLogging);
         applied += Apply(values, "UI", "UI Enabled", UiEnabled); applied += Apply(values, "UI", "Toggle Key", UiToggleKey);
         applied += Apply(values, "UI", "Edit Mode Key", UiEditModeKey); applied += Apply(values, "UI", "UI Scale", UiScale);
         applied += Apply(values, "UI", "Window Width", UiWindowWidth); applied += Apply(values, "UI", "Background Opacity", UiBackgroundOpacity);
@@ -191,6 +196,9 @@ public sealed class Plugin : BaseUnityPlugin
         EnableTransportDiagnosticLogging = null;
         EnableLifecycleDiagnosticLogging = null;
         EnableMagicAttributionDiagnosticLogging = null;
+        if (EnablePerformanceDiagnosticLogging != null)
+            EnablePerformanceDiagnosticLogging.SettingChanged -= OnPerformanceLoggingChanged;
+        EnablePerformanceDiagnosticLogging = null;
         UiEnabled = null;
         UiToggleKey = null;
         UiEditModeKey = null;
@@ -319,8 +327,10 @@ public sealed class Plugin : BaseUnityPlugin
         catch (Exception ex) { Warn($"DamageCommitTransportFailure exception={ex.GetType().Name}"); }
     }
 
-    internal static bool PerformanceLoggingEnabled => LoggingEnabled || LifecycleLoggingEnabled || MagicLoggingEnabled ||
-        EnableTransportDiagnosticLogging?.Value == true;
+    private static void OnPerformanceLoggingChanged(object sender, EventArgs args) =>
+        Transport?.RefreshPerformanceSettings();
+
+    internal static bool PerformanceLoggingEnabled => EnablePerformanceDiagnosticLogging?.Value == true;
     internal static void PerformanceLog(string message)
     {
         if (!PerformanceLoggingEnabled) return;

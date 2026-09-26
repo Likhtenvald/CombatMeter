@@ -31,6 +31,7 @@ internal static class ConfigCatalog
         Local("Diagnostics", "EnableTransportDiagnosticLogging", "false", "bool", "Damage transport diagnostics", "Plugin transport logger", true),
         Local("Diagnostics", "EnableLifecycleDiagnosticLogging", "false", "bool", "Lifecycle diagnostics", "PlayerLifecycleProbe", true),
         Local("Diagnostics", "EnableMagicAttributionDiagnosticLogging", "false", "bool", "Magic attribution diagnostics", "MagicAttributionProbe", true),
+        Local("Diagnostics", "EnablePerformanceDiagnosticLogging", "false", "bool", "Opt-in host performance metrics", "DamageCommitTransport", true),
         Local("UI", "UI Enabled", "true", "bool", "Shows the combat meter", "CombatMeterUiController", true),
         Local("UI", "Toggle Key", "F8", "keyboard shortcut", "Shows or hides the local HUD", "Plugin.Update", true),
         Local("UI", "Edit Mode Key", "LeftControl+F8", "keyboard shortcut", "Enters local HUD edit mode", "Plugin.Update", true),
