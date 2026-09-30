@@ -38,6 +38,8 @@ public sealed class Plugin : BaseUnityPlugin
     internal static ConfigEntry<float> UiBackgroundOpacity;
     internal static ConfigEntry<bool> UiShowDamageBars;
     internal static ConfigEntry<bool> UiShowDamagePercent;
+    internal static ConfigEntry<bool> UiShowLargestHit;
+    internal static ConfigEntry<bool> UiShowDeaths;
     internal static ConfigEntry<float> UiDamageBarOpacity;
     internal static ConfigEntry<float> CombatTimeout;
     internal static ConfigEntry<float> RecoveryTimeout;
@@ -84,6 +86,8 @@ public sealed class Plugin : BaseUnityPlugin
         UiBackgroundOpacity = Config.Bind("UI", "Background Opacity", CombatMeterLayout.DefaultOpacity,
             new ConfigDescription("Changes panel background opacity on this client only; applied live.", new AcceptableValueRange<float>(0f, 1f)));
         UiShowDamageBars = Config.Bind("UI", "Show Damage Bars", true, "Shows damage contribution bars on this client only.");
+        UiShowLargestHit = Config.Bind("UI", "Show Largest Hit", false, "Shows the largest accepted Damage Done contribution after DPS on this client only.");
+        UiShowDeaths = Config.Bind("UI", "Show Deaths", false, "Shows accepted encounter deaths as the final column on this client only.");
         UiShowDamagePercent = Config.Bind("UI", "Show Damage Percent", true, "Shows the damage contribution percentage on this client only.");
         UiDamageBarOpacity = Config.Bind("UI", "Damage Bar Opacity", 0.25f,
             new ConfigDescription("Changes contribution bar opacity on this client only; applied live.", new AcceptableValueRange<float>(0f, 1f)));
@@ -161,6 +165,8 @@ public sealed class Plugin : BaseUnityPlugin
         applied += Apply(values, "UI", "UI Enabled", UiEnabled); applied += Apply(values, "UI", "Toggle Key", UiToggleKey);
         applied += Apply(values, "UI", "Edit Mode Key", UiEditModeKey); applied += Apply(values, "UI", "UI Scale", UiScale);
         applied += Apply(values, "UI", "Window Width", UiWindowWidth); applied += Apply(values, "UI", "Background Opacity", UiBackgroundOpacity);
+        applied += Apply(values, "UI", "Show Largest Hit", UiShowLargestHit);
+        applied += Apply(values, "UI", "Show Deaths", UiShowDeaths);
         applied += Apply(values, "UI", "Show Damage Bars", UiShowDamageBars); applied += Apply(values, "UI", "Show Damage Percent", UiShowDamagePercent);
         applied += Apply(values, "UI", "Damage Bar Opacity", UiDamageBarOpacity); applied += Apply(values, "UI Position", "X", UiPositionX);
         applied += Apply(values, "UI Position", "Y", UiPositionY); applied += Apply(values, "Combat", "Combat Timeout", CombatTimeout);
@@ -209,6 +215,8 @@ public sealed class Plugin : BaseUnityPlugin
         UiBackgroundOpacity = null;
         UiShowDamageBars = null;
         UiShowDamagePercent = null;
+        UiShowLargestHit = null;
+        UiShowDeaths = null;
         UiDamageBarOpacity = null;
         CombatTimeout = null;
         RecoveryTimeout = null;
@@ -237,6 +245,7 @@ public sealed class Plugin : BaseUnityPlugin
             UiScale?.Value ?? CombatMeterLayout.DefaultScale, UiWindowWidth?.Value ?? CombatMeterLayout.DefaultWidth,
             UiBackgroundOpacity?.Value ?? CombatMeterLayout.DefaultOpacity,
             UiShowDamageBars?.Value != false, UiShowDamagePercent?.Value != false,
+            UiShowLargestHit?.Value == true, UiShowDeaths?.Value == true,
             UiDamageBarOpacity?.Value ?? 0.25f, PersistUiPosition));
     }
 

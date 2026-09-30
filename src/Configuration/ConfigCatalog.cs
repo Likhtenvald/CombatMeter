@@ -39,6 +39,8 @@ internal static class ConfigCatalog
         Local("UI", "Window Width", "480", "350..800", "Changes local HUD width", "CombatMeterUiController", true),
         Local("UI", "Background Opacity", "0.65", "0..1", "Changes local panel opacity", "CombatMeterUiController", true),
         Local("UI", "Show Damage Bars", "true", "bool", "Shows local contribution bars", "CombatMeterUiController", true),
+        Local("UI", "Show Largest Hit", "false", "bool", "Shows largest accepted damage contribution", "CombatMeterUiController", true),
+        Local("UI", "Show Deaths", "false", "bool", "Shows accepted encounter deaths", "CombatMeterUiController", true),
         Local("UI", "Show Damage Percent", "true", "bool", "Shows local contribution percentages", "CombatMeterUiController", true),
         Local("UI", "Damage Bar Opacity", "0.25", "0..1", "Changes local bar opacity", "CombatMeterUiController", true),
         Local("UI Position", "X", "24", "finite; clamped to canvas", "Persists local HUD position", "CombatMeterUiController", true),

@@ -27,7 +27,7 @@ internal sealed class DamageCommitTransport
     internal const string AckRpc = "CombatMeter.DamageCommitAck.v1";
     internal const string AttributionRpc = "CombatMeter.MagicAttribution.v1";
     internal const string AttributionAckRpc = "CombatMeter.MagicAttributionAck.v1";
-    internal const string SnapshotRpc = "CombatMeter.CombatSnapshot.v1";
+    internal const string SnapshotRpc = "CombatMeter.CombatSnapshot.v2";
     internal const double SnapshotIntervalSeconds = 0.5d;
     // ZRoutedRpc has Register(Dictionary.Add), but no public Unregister in this build.
     // Register once per instance. Inactive callbacks are gated; weak keys don't retain old worlds.

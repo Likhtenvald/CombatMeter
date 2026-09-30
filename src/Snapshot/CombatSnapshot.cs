@@ -10,14 +10,16 @@ internal sealed class CombatSnapshotPlayer
     internal string DisplayName { get; }
     internal float DamageDone { get; }
     internal double Dps { get; }
+    internal float LargestHit { get; }
+    internal int Deaths { get; }
     internal float DamageTaken { get; }
-    internal CombatSnapshotPlayer(long playerId, string displayName, float damageDone, double dps, float damageTaken)
-    { PlayerId = playerId; DisplayName = displayName ?? ""; DamageDone = damageDone; Dps = dps; DamageTaken = damageTaken; }
+    internal CombatSnapshotPlayer(long playerId, string displayName, float damageDone, double dps, float damageTaken, float largestHit = 0f, int deaths = 0)
+    { PlayerId = playerId; DisplayName = displayName ?? ""; DamageDone = damageDone; Dps = dps; DamageTaken = damageTaken; LargestHit = largestHit; Deaths = deaths; }
 }
 
 internal sealed class CombatSnapshot
 {
-    internal const byte ProtocolVersion = 1;
+    internal const byte ProtocolVersion = 2;
     internal readonly long HostPeerSessionId;
     internal readonly Guid SnapshotEpoch;
     internal readonly long Sequence;

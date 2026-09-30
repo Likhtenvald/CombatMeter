@@ -18,6 +18,8 @@ Existing section and key names are preserved in `0.12.0`, with a new independent
 | UI / Window Width | 480 | 350–800 | Local | Changes local HUD width. |
 | UI / Background Opacity | 0.65 | 0–1 | Local | Changes local panel opacity. |
 | UI / Show Damage Bars | true | Boolean | Local | Shows contribution bars. |
+| UI / Show Largest Hit | false | Boolean | Local | Shows the largest accepted Damage Done contribution immediately after DPS. |
+| UI / Show Deaths | false | Boolean | Local | Shows accepted encounter deaths in the final column. |
 | UI / Show Damage Percent | true | Boolean | Local | Shows contribution percentages. |
 | UI / Damage Bar Opacity | 0.25 | 0–1 | Local | Changes contribution bar opacity. |
 | UI Position / X | 24 | Finite; canvas-clamped | Local | Persists horizontal HUD position. |
@@ -28,5 +30,5 @@ Existing section and key names are preserved in `0.12.0`, with a new independent
 
 All diagnostic categories default to disabled. Other diagnostic switches do not implicitly enable performance diagnostics. Enabling performance diagnostics live starts a fresh reporting window; disabling discards the partial window and bypasses telemetry timing/counters.
 
-There is intentionally no ConfigSync, ServerSync, config RPC, or config locking. Clients do not require host configuration values because `CombatSnapshot v1` already transports authoritative encounter state, elapsed time, Damage, DPS, and Taken.
+There is intentionally no ConfigSync, ServerSync, config RPC, or config locking. Clients do not require host configuration values because `CombatSnapshot v2` already transports authoritative encounter state, elapsed time, Damage, DPS, Taken, Largest Hit, and Deaths.
 

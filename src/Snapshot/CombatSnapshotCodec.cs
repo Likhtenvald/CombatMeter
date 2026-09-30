@@ -18,7 +18,7 @@ internal static class CombatSnapshotCodec
         writer.Write(snapshot.SnapshotEpoch.ToByteArray()); writer.Write(snapshot.Sequence); writer.Write(snapshot.EncounterId);
         writer.Write((byte)snapshot.EncounterState); writer.Write(snapshot.EncounterElapsedSeconds); writer.Write((byte)snapshot.Players.Count);
         foreach (CombatSnapshotPlayer row in snapshot.Players)
-        { writer.Write(row.PlayerId); writer.Write(row.DisplayName); writer.Write(row.DamageDone); writer.Write(row.Dps); writer.Write(row.DamageTaken); }
+        { writer.Write(row.PlayerId); writer.Write(row.DisplayName); writer.Write(row.DamageDone); writer.Write(row.Dps); writer.Write(row.DamageTaken); writer.Write(row.LargestHit); writer.Write(row.Deaths); }
         writer.Flush(); if (stream.Length > MaxBytes) throw new InvalidDataException("PacketSize"); return stream.ToArray();
     }
 
@@ -34,7 +34,8 @@ internal static class CombatSnapshotCodec
         {
             long playerId = reader.ReadInt64(); string name = reader.ReadString(); float done = reader.ReadSingle();
             double dps = reader.ReadDouble(); float taken = reader.ReadSingle();
-            rows.Add(new CombatSnapshotPlayer(playerId, name, done, dps, taken));
+            float largestHit = reader.ReadSingle(); int deaths = reader.ReadInt32();
+            rows.Add(new CombatSnapshotPlayer(playerId, name, done, dps, taken, largestHit, deaths));
         }
         if (stream.Position != stream.Length) throw new InvalidDataException("TrailingData");
         var snapshot = new CombatSnapshot(host, epoch, sequence, encounterId, state, elapsed, rows); Validate(snapshot); return snapshot;
@@ -59,7 +60,8 @@ internal static class CombatSnapshotCodec
             if (row.DisplayName == null || row.DisplayName.Length > CombatSnapshotBuilder.MaxDisplayNameLength)
                 throw new InvalidDataException("DisplayName");
             if (!CombatSnapshotBuilder.FiniteNonnegative(row.DamageDone) || !CombatSnapshotBuilder.FiniteNonnegative(row.Dps) ||
-                !CombatSnapshotBuilder.FiniteNonnegative(row.DamageTaken)) throw new InvalidDataException("PlayerNumbers");
+                !CombatSnapshotBuilder.FiniteNonnegative(row.DamageTaken) ||
+                !CombatSnapshotBuilder.FiniteNonnegative(row.LargestHit) || row.Deaths < 0) throw new InvalidDataException("PlayerNumbers");
         }
     }
 

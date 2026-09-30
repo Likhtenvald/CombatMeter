@@ -53,3 +53,60 @@ internal static class CombatMeterLayout
     }
     private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 }
+
+// Explicit visual contract shared by header and row layout. Visibility never determines insertion order.
+internal enum MeterColumn { Player, Damage, Percent, Dps, LargestHit, Taken, Deaths }
+
+internal readonly struct CombatMeterColumns
+{
+    internal readonly float Width;
+    private readonly bool _percent, _largest, _deaths;
+    internal CombatMeterColumns(float width, bool percent, bool largest, bool deaths)
+    {
+        _percent = percent; _largest = largest; _deaths = deaths;
+        Width = Math.Max(CombatMeterLayout.SanitizeWidth(width),
+            CombatMeterLayout.MinWidth + (largest ? 96f : 0f) + (deaths ? 52f : 0f));
+    }
+    internal bool Visible(MeterColumn column) => column switch
+    {
+        MeterColumn.Percent => _percent,
+        MeterColumn.LargestHit => _largest,
+        MeterColumn.Deaths => _deaths,
+        _ => true
+    };
+    internal float X(MeterColumn column)
+    {
+        float taken = Width - 72f - (_deaths ? 52f : 0f);
+        float dps = taken - 64f - (_largest ? 96f : 0f);
+        return column switch
+        {
+            MeterColumn.Player => 12f,
+            MeterColumn.Damage => dps - (_percent ? 132f : 70f),
+            MeterColumn.Percent => dps - 62f,
+            MeterColumn.Dps => dps,
+            MeterColumn.LargestHit => dps + 64f,
+            MeterColumn.Taken => taken,
+            MeterColumn.Deaths => Width - 60f,
+            _ => throw new ArgumentOutOfRangeException(nameof(column))
+        };
+    }
+    internal float CellWidth(MeterColumn column) => column switch
+    {
+        MeterColumn.Player => Math.Max(70f, X(MeterColumn.Damage) - 20f),
+        MeterColumn.Damage => 66f,
+        MeterColumn.Percent => 58f,
+        MeterColumn.Dps => 58f,
+        MeterColumn.LargestHit => 90f,
+        MeterColumn.Taken => 60f,
+        MeterColumn.Deaths => 48f,
+        _ => throw new ArgumentOutOfRangeException(nameof(column))
+    };
+    // Slots form the ordering contract: LargestHit directly follows DPS; Deaths is terminal.
+    internal const int SlotCount = 7;
+    internal static MeterColumn At(int slot) => slot switch
+    {
+        0 => MeterColumn.Player, 1 => MeterColumn.Damage, 2 => MeterColumn.Percent,
+        3 => MeterColumn.Dps, 4 => MeterColumn.LargestHit, 5 => MeterColumn.Taken,
+        6 => MeterColumn.Deaths, _ => throw new ArgumentOutOfRangeException(nameof(slot))
+    };
+}

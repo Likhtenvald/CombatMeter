@@ -22,9 +22,9 @@ internal static class CombatSnapshotBuilder
             {
                 if (player.PlayerId == 0) continue;
                 double dps = encounter.Dps(player.PlayerId, now);
-                if (!FiniteNonnegative(player.DamageDone) || !FiniteNonnegative(player.DamageTaken) || !FiniteNonnegative(dps))
+                if (!FiniteNonnegative(player.DamageDone) || !FiniteNonnegative(player.DamageTaken) || !FiniteNonnegative(dps) || !FiniteNonnegative(player.LargestHit) || player.Deaths < 0)
                     throw new InvalidOperationException("Invalid combat total");
-                rows.Add(new CombatSnapshotPlayer(player.PlayerId, LimitName(player.DisplayName), player.DamageDone, dps, player.DamageTaken));
+                rows.Add(new CombatSnapshotPlayer(player.PlayerId, LimitName(player.DisplayName), player.DamageDone, dps, player.DamageTaken, player.LargestHit, player.Deaths));
             }
         }
         if (rows.Count > MaxPlayers) throw new InvalidOperationException("Too many players");

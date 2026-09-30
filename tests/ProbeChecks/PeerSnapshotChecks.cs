@@ -125,12 +125,12 @@ internal static class PeerSnapshotChecks
             for (int i = 0; i < 10; i++) { Eq(2002L, HostPlayerIdentity.ResolveRemote(202).Value); Eq(1001L, HostPlayerIdentity.ResolveLocal(101).Value); }
             Eq(0, h.Adapter.Clusters.ActiveCount); h.Publish(); Empty(h.Local); Empty(h.Remote(202));
         });
-        Test("v1 codec roundtrips routed and empty payloads unchanged", () =>
+        Test("v2 codec roundtrips routed and empty payloads unchanged", () =>
         {
             var h = new Host(); h.AddPeer(202, null); h.Done(1001, 10); h.Publish();
             foreach (var s in new[] { h.Local, h.Remote(202) })
-            { byte[] encoded = CombatSnapshotCodec.Encode(s); Eq((byte)1, encoded[0]); True(encoded.SequenceEqual(CombatSnapshotCodec.Encode(CombatSnapshotCodec.Decode(encoded)))); }
-            Eq("CombatMeter.CombatSnapshot.v1", DamageCommitTransport.SnapshotRpc);
+            { byte[] encoded = CombatSnapshotCodec.Encode(s); Eq((byte)2, encoded[0]); True(encoded.SequenceEqual(CombatSnapshotCodec.Encode(CombatSnapshotCodec.Decode(encoded)))); }
+            Eq("CombatMeter.CombatSnapshot.v2", DamageCommitTransport.SnapshotRpc);
         });
         Test("client rejects non-host spoof and host-session mismatch", () =>
         {
@@ -284,6 +284,53 @@ internal static class PeerSnapshotChecks
             var h = new Host(); h.AddPeer(202, null); h.Net.Peers[0].m_characterID = new ZDOID("missing");
             h.Done(2002, 10); h.Publish(); Empty(h.Remote(202));
             h.Character(202, 2002); h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+
+        Test("v2 distant recipient receives authoritative damage largest hit and accepted deaths", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002);
+            h.Done(2002, 10, 60); h.Done(2002, 10, 40); h.Now = 1;
+            h.Adapter.ObservePlayerDeath(2002, "life1"); h.Adapter.ObservePlayerDeath(2002, "life1"); h.Publish();
+            var row = h.Remote(202).Players.Single(); Eq(100f, row.DamageDone); Eq(60f, row.LargestHit); Eq(1, row.Deaths);
+            h.Now = 21; h.Publish(); Eq(EncounterState.Recovery, h.Remote(202).EncounterState);
+            row = h.Remote(202).Players.Single(); Eq(60f, row.LargestHit); Eq(1, row.Deaths);
+            h.Now = 182; h.Publish(); Empty(h.Remote(202));
+            h.Now = 183; h.Done(2002, 20, 5); h.Publish(); row = h.Remote(202).Players.Single();
+            Eq(5f, row.LargestHit); Eq(0, row.Deaths);
+        });
+        Test("v2 distant independent rows preserve own metrics through merge", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.AddPeer(303, null); h.Character(202, 2002); h.Character(303, 3003);
+            h.Done(2002, 10, 40); h.Done(3003, 20, 70); h.Now = 1;
+            h.Adapter.ObservePlayerDeath(2002, "a"); h.Adapter.ObservePlayerDeath(3003, "b1");
+            h.Adapter.ObservePlayerDeath(3003, "b2"); h.Publish();
+            Eq(40f, h.Remote(202).Players.Single().LargestHit); Eq(1, h.Remote(202).Players.Single().Deaths);
+            Eq(70f, h.Remote(303).Players.Single().LargestHit); Eq(2, h.Remote(303).Players.Single().Deaths);
+            h.Now = 2; h.Done(2002, 20, 5); h.Publish();
+            foreach (long peer in new long[] { 202, 303 })
+            {
+                var rows = h.Remote(peer).Players;
+                Eq(40f, rows.Single(r => r.PlayerId == 2002).LargestHit); Eq(1, rows.Single(r => r.PlayerId == 2002).Deaths);
+                Eq(70f, rows.Single(r => r.PlayerId == 3003).LargestHit); Eq(2, rows.Single(r => r.PlayerId == 3003).Deaths);
+            }
+        });
+        Test("reconnect alone never increments deaths or resets retained encounter metrics", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002); h.Done(2002, 10, 60); h.Publish();
+            h.Net.Peers.Clear(); h.Adapter.Disconnected(h.Net);
+            h.Net.Peers.Add(new ZNetPeer { m_uid = 202, m_playerID = 2002 }); h.Now = 1; h.Publish();
+            Eq(0, h.Remote(202).Players.Single().Deaths); Eq(60f, h.Remote(202).Players.Single().LargestHit);
+        });
+        Test("malformed v2 metrics cannot replace accepted remote snapshot", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002); h.Done(2002, 10, 60); h.Publish();
+            var good = h.Remote(202);
+            var next = new CombatSnapshot(101, good.SnapshotEpoch, good.Sequence + 1, good.EncounterId, good.EncounterState, good.EncounterElapsedSeconds, good.Players);
+            var bytes = CombatSnapshotCodec.Encode(next);
+            Array.Copy(BitConverter.GetBytes(-1), 0, bytes, bytes.Length - 4, 4);
+            h.DeliverBytes(202, 101, bytes); Eq(good, h.Remote(202));
+            bytes = CombatSnapshotCodec.Encode(next); Array.Copy(BitConverter.GetBytes(float.NaN), 0, bytes, bytes.Length - 8, 4);
+            h.DeliverBytes(202, 101, bytes); Eq(good, h.Remote(202));
         });
         return _passed;
     }

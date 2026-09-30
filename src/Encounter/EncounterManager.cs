@@ -125,6 +125,7 @@ internal sealed class EncounterManager
             _recoveryTickets.Add(playerId, ticket);
             Log("RecoveryTicketCreated player=" + playerId + " deathTime=" + now + " expiry=" + ticket.ExpiryTime);
         }
+        if (Statistics.TryGet(playerId, out PlayerCombatStatistics deathStatistics)) deathStatistics.AddDeath();
         return PlayerDeathResult.Committed;
     }
 

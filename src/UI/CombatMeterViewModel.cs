@@ -14,11 +14,13 @@ internal sealed class CombatMeterRowModel
     internal string DamageText { get; }
     internal string PercentText { get; }
     internal string DpsText { get; }
+    internal string LargestHitText { get; }
+    internal string DeathsText { get; }
     internal string TakenText { get; }
     internal double DamageContribution { get; }
 
-    internal CombatMeterRowModel(long playerId, string name, string damage, string percent, string dps, string taken, double contribution)
-    { PlayerId = playerId; NameText = name; DamageText = damage; PercentText = percent; DpsText = dps; TakenText = taken; DamageContribution = contribution; }
+    internal CombatMeterRowModel(long playerId, string name, string damage, string percent, string dps, string taken, double contribution, string largestHit = "0", string deaths = "0")
+    { PlayerId = playerId; NameText = name; DamageText = damage; PercentText = percent; DpsText = dps; TakenText = taken; DamageContribution = contribution; LargestHitText = largestHit; DeathsText = deaths; }
 }
 
 internal sealed class CombatMeterViewModel
@@ -78,7 +80,8 @@ internal sealed class CombatMeterPresenter
                 damage.ToString("0", CultureInfo.InvariantCulture),
                 (contribution * 100d).ToString("0.0", CultureInfo.InvariantCulture) + "%",
                 dps.ToString("0.0", CultureInfo.InvariantCulture),
-                taken.ToString("0", CultureInfo.InvariantCulture), contribution));
+                taken.ToString("0", CultureInfo.InvariantCulture), contribution,
+                player.LargestHit.ToString("0", CultureInfo.InvariantCulture), player.Deaths.ToString(CultureInfo.InvariantCulture)));
         }
         return new CombatMeterViewModel(snapshot.EncounterId, snapshot.EncounterState.ToString(),
             "Time: " + snapshot.EncounterElapsedSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s",

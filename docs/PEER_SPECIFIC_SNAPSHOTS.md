@@ -92,8 +92,12 @@ Remote ready peers receive individual routed RPCs addressed to peer.m_uid.
 Zero, local-host destinations and duplicate destinations are skipped. Single-player
 publication sends no remote snapshot. There is no Everybody snapshot broadcast.
 
-CombatSnapshot.ProtocolVersion remains 1, SnapshotRpc remains
-CombatMeter.CombatSnapshot.v1, and the codec and its validation are unchanged.
+Largest Hit / Deaths development uses CombatSnapshot.ProtocolVersion = 2 and
+CombatMeter.CombatSnapshot.v2. V1 was used through release 0.12.1. V2 appends
+LargestHit (Single) and Deaths (Int32) to each player row. Mixed v1/v2 sessions are
+unsupported: all participants must install the same new build. There is no
+negotiation, fallback, second RPC or parallel delivery. Trailing data is still rejected.
+See OPTIONAL_METRICS.md for the exact row format and semantics.
 Client receive/store validation remains unchanged: actual-host sender, matching host
 session identity, malformed payload rejection, duplicate/stale rejection, and epoch
 changes requiring the existing session/store reset. Newer empty snapshots replace
@@ -115,7 +119,7 @@ New tests exercise the actual transport with managed Player/ZDO/peer doubles and
 client receive paths. Coverage includes A/B versus C isolation, shared rows, bridge
 merge, donor retirement, player-only damage, finish/new encounter, local/unknown
 identity, owner changes, ambiguous/invalid entities, exact cycle sequencing,
-ready/directed/zero/self destinations, v1 round trips and receive validation.
+ready/directed/zero/self destinations, v2 round trips and receive validation.
 
 ```powershell
 dotnet run --project tests/ProbeChecks/ProbeChecks.csproj -c Release

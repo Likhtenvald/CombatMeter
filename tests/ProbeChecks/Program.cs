@@ -200,6 +200,7 @@ internal static class Program
         _passed += DpsActivityChecks.Run();
         _passed += RecoveryTicketChecks.Run();
         _passed += SnapshotChecks.Run();
+        _passed += OptionalMetricsChecks.Run();
         _passed += UiPresentationChecks.Run();
         _passed += UiLayoutChecks.Run();
         _passed += UiEditModeChecks.Run();

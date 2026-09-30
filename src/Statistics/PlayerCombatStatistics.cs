@@ -6,6 +6,9 @@ internal sealed class PlayerCombatStatistics
     internal long PlayerId { get; }
     internal string DisplayName { get; private set; }
     internal float DamageDone { get; private set; }
+    internal float LargestHit { get; private set; }
+    internal int Deaths { get; private set; }
+    internal void AddDeath() { if (Deaths < int.MaxValue) Deaths++; }
     internal float DamageTaken { get; private set; }
 
     internal PlayerCombatStatistics(long playerId, string displayName)
@@ -18,6 +21,7 @@ internal sealed class PlayerCombatStatistics
     {
         UpdateDisplayName(displayName);
         DamageDone += amount;
+        if (amount > LargestHit) LargestHit = amount;
     }
 
     internal void AddDamageTaken(float amount, string displayName)

@@ -16,13 +16,13 @@ internal sealed class CombatMeterUiController
     private GameObject _canvasRoot, _panel;
     private RectTransform _canvasRect, _panelRect, _dragHandle;
     private Image _panelImage;
-    private Text _title, _state, _time, _playerHeader, _damageHeader, _percentHeader, _dpsHeader, _takenHeader;
+    private Text _title, _state, _time, _playerHeader, _damageHeader, _percentHeader, _dpsHeader, _takenHeader, _largestHeader, _deathsHeader;
     private Font _font;
     private bool _creationWarningLogged, _lastVisible, _previewRendered;
     private Vector2 _dragStartPointer, _dragStartPosition;
     private float _width, _scale, _opacity, _canvasWidth, _canvasHeight;
     private float _barOpacity;
-    private bool _showBars, _showPercent;
+    private bool _showBars, _showPercent, _showLargest, _showDeaths;
     private long _lastLoggedEncounter;
     private string _lastLoggedState;
     private float _nextRenderLogAt;
@@ -34,11 +34,11 @@ internal sealed class CombatMeterUiController
     internal void Tick(CombatSnapshotStore store, bool worldReady, bool enabled, bool togglePressed, bool resetPressed,
         bool editTogglePressed, bool escapePressed, bool vanillaModalVisible,
         float positionX, float positionY, float scale, float width, float opacity,
-        bool showBars, bool showPercent, float barOpacity, Action<float, float> persistPosition)
+        bool showBars, bool showPercent, bool showLargest, bool showDeaths, float barOpacity, Action<float, float> persistPosition)
     {
         if (!worldReady || !enabled) { ExitEditMode("Lifecycle", persistPosition); Destroy(); return; }
         if (!IsCreated && !TryCreate()) return;
-        ApplyLayout(positionX, positionY, scale, width, opacity, showBars, showPercent, barOpacity, persistPosition);
+        ApplyLayout(positionX, positionY, scale, width, opacity, showBars, showPercent, showLargest, showDeaths, barOpacity, persistPosition);
         if (editTogglePressed)
         {
             if (_edit.IsEditing) ExitEditMode("Toggle", persistPosition);
@@ -123,6 +123,8 @@ internal sealed class CombatMeterUiController
             _percentHeader = AddText(_panel.transform, "PercentHeader", "%", 312f, -61f, 58f, 22f, 13, TextAnchor.MiddleRight, FontStyle.Bold);
             _dpsHeader = AddText(_panel.transform, "DpsHeader", "DPS", 318f, -61f, 66f, 22f, 13, TextAnchor.MiddleRight, FontStyle.Bold);
             _takenHeader = AddText(_panel.transform, "TakenHeader", "Taken", 390f, -61f, 78f, 22f, 13, TextAnchor.MiddleRight, FontStyle.Bold);
+            _largestHeader = AddText(_panel.transform, "LargestHeader", "Largest Hit", 0f, -61f, 90f, 22f, 13, TextAnchor.MiddleRight, FontStyle.Bold);
+            _deathsHeader = AddText(_panel.transform, "DeathsHeader", "Deaths", 0f, -61f, 48f, 22f, 13, TextAnchor.MiddleRight, FontStyle.Bold);
             _panel.SetActive(false); _creationWarningLogged = false; Plugin.UiLog("CombatMeterUiCreated"); return true;
         }
         catch (Exception ex)
@@ -134,18 +136,19 @@ internal sealed class CombatMeterUiController
     }
 
     private void ApplyLayout(float x, float y, float scale, float width, float opacity,
-        bool showBars, bool showPercent, float barOpacity, Action<float, float> persist)
+        bool showBars, bool showPercent, bool showLargest, bool showDeaths, float barOpacity, Action<float, float> persist)
     {
-        scale = CombatMeterLayout.SanitizeScale(scale); width = CombatMeterLayout.SanitizeWidth(width);
+        scale = CombatMeterLayout.SanitizeScale(scale); width = new CombatMeterColumns(width, showPercent, showLargest, showDeaths).Width;
         opacity = CombatMeterLayout.SanitizeOpacity(opacity); barOpacity = CombatMeterLayout.SanitizeOpacity(barOpacity);
         if (!Near(_scale, scale))
         { _scale = scale; _panelRect.localScale = new Vector3(scale, scale, 1f); Plugin.UiLog("CombatMeterUiScaleChanged scale=" + F(scale)); }
-        bool columnsChanged = _showPercent != showPercent;
-        _showBars = showBars; _showPercent = showPercent; _barOpacity = barOpacity;
-        if (!Near(_width, width) || columnsChanged) { _width = width; ApplyWidth(width); }
+        bool columnsChanged = _showPercent != showPercent || _showLargest != showLargest || _showDeaths != showDeaths;
+        _showBars = showBars; _showPercent = showPercent; _showLargest = showLargest; _showDeaths = showDeaths; _barOpacity = barOpacity;
+        if (!Near(_width, width) || columnsChanged) { _width = width; ApplyWidth(width); _presenter.Reset(); _previewRendered = false; }
         if (!Near(_opacity, opacity)) { _opacity = opacity; _panelImage.color = new Color(0.035f, 0.035f, 0.045f, opacity); }
         _percentHeader.gameObject.SetActive(_showPercent);
-        foreach (RowView row in _rows) row.ApplyStyle(_showBars, _showPercent, _barOpacity);
+        _largestHeader.gameObject.SetActive(_showLargest); _deathsHeader.gameObject.SetActive(_showDeaths);
+        foreach (RowView row in _rows) row.ApplyStyle(_showBars, _showPercent, _showLargest, _showDeaths, _barOpacity);
         if (!_edit.IsDragging && (!Near(_panelRect.anchoredPosition.x, x) || !Near(_panelRect.anchoredPosition.y, y))) _panelRect.anchoredPosition = new Vector2(x, y);
         Vector2 canvas = _canvasRect.rect.size;
         bool resolutionChanged = !Near(_canvasWidth, canvas.x) || !Near(_canvasHeight, canvas.y);
@@ -158,13 +161,9 @@ internal sealed class CombatMeterUiController
         _panelRect.sizeDelta = new Vector2(width, _panelRect.sizeDelta.y); SetRect(_dragHandle, 0f, 0f, width, 32f);
         SetRect((RectTransform)_title.transform, 12f, 0f, width - 24f, 32f);
         float half = (width - 24f) / 2f; SetRect((RectTransform)_state.transform, 12f, -36f, half, 22f); SetRect((RectTransform)_time.transform, 12f + half, -36f, half, 22f);
-        float takenX = width - 72f, dpsX = width - 136f, percentX = width - 198f;
-        float damageX = width - (_showPercent ? 268f : 206f);
-        SetRect((RectTransform)_playerHeader.transform, 12f, -61f, Math.Max(70f, damageX - 20f), 22f);
-        SetRect((RectTransform)_damageHeader.transform, damageX, -61f, 66f, 22f);
-        SetRect((RectTransform)_percentHeader.transform, percentX, -61f, 58f, 22f);
-        SetRect((RectTransform)_dpsHeader.transform, dpsX, -61f, 58f, 22f); SetRect((RectTransform)_takenHeader.transform, takenX, -61f, 60f, 22f);
-        foreach (RowView row in _rows) row.ApplyWidth(width, _showPercent);
+        var columns = new CombatMeterColumns(width, _showPercent, _showLargest, _showDeaths);
+        ApplyColumns(columns, -61f, _playerHeader, _damageHeader, _percentHeader, _dpsHeader, _largestHeader, _takenHeader, _deathsHeader);
+        foreach (RowView row in _rows) row.ApplyWidth(width, _showPercent, _showLargest, _showDeaths);
     }
 
     private void Render(CombatMeterViewModel model, long sequence, Action<float, float> persist)
@@ -172,7 +171,7 @@ internal sealed class CombatMeterUiController
         _state.text = "State: " + model.StateText; _time.text = model.TimeText;
         while (_rows.Count < model.Rows.Count && _rows.Count < CombatSnapshotBuilder.MaxPlayers) _rows.Add(CreateRow(_rows.Count));
         for (int i = 0; i < _rows.Count; i++)
-        { bool active = i < model.Rows.Count; _rows[i].Root.SetActive(active); if (active) _rows[i].Set(model.Rows[i], _width, _showBars, _showPercent, _barOpacity); }
+        { bool active = i < model.Rows.Count; _rows[i].Root.SetActive(active); if (active) _rows[i].Set(model.Rows[i], _width, _showBars, _showPercent, _showLargest, _showDeaths, _barOpacity); }
         _panelRect.sizeDelta = new Vector2(_width, 96f + RowHeight * model.Rows.Count); ClampAndPersist(persist, true);
         bool meaningful = model.EncounterId != _lastLoggedEncounter || model.StateText != _lastLoggedState || Time.unscaledTime >= _nextRenderLogAt;
         if (meaningful)
@@ -192,8 +191,10 @@ internal sealed class CombatMeterUiController
             AddText(root.transform, "Damage", "", 0f, 0f, 66f, RowHeight, 14, TextAnchor.MiddleRight),
             AddText(root.transform, "Percent", "", 0f, 0f, 58f, RowHeight, 14, TextAnchor.MiddleRight),
             AddText(root.transform, "DPS", "", 0f, 0f, 58f, RowHeight, 14, TextAnchor.MiddleRight),
-            AddText(root.transform, "Taken", "", 0f, 0f, 60f, RowHeight, 14, TextAnchor.MiddleRight), background, fill);
-        row.ApplyWidth(_width, _showPercent); row.ApplyStyle(_showBars, _showPercent, _barOpacity); return row;
+            AddText(root.transform, "Taken", "", 0f, 0f, 60f, RowHeight, 14, TextAnchor.MiddleRight), background, fill,
+            AddText(root.transform, "LargestHit", "", 0f, 0f, 90f, RowHeight, 14, TextAnchor.MiddleRight),
+            AddText(root.transform, "Deaths", "", 0f, 0f, 48f, RowHeight, 14, TextAnchor.MiddleRight));
+        row.ApplyWidth(_width, _showPercent, _showLargest, _showDeaths); row.ApplyStyle(_showBars, _showPercent, _showLargest, _showDeaths, _barOpacity); return row;
     }
 
     private void UpdateDrag(Action<float, float> persist)
@@ -250,6 +251,23 @@ internal sealed class CombatMeterUiController
         rect.offsetMin = Vector2.zero; rect.offsetMax = Vector2.zero;
         Image image = gameObject.GetComponent<Image>(); image.color = color; image.raycastTarget = false; return image;
     }
+    private static void ApplyColumns(CombatMeterColumns columns, float y, Text player, Text damage,
+        Text percent, Text dps, Text largest, Text taken, Text deaths)
+    {
+        for (int slot = 0; slot < CombatMeterColumns.SlotCount; slot++)
+        {
+            MeterColumn column = CombatMeterColumns.At(slot);
+            Text cell = column switch
+            {
+                MeterColumn.Player => player, MeterColumn.Damage => damage, MeterColumn.Percent => percent,
+                MeterColumn.Dps => dps, MeterColumn.LargestHit => largest, MeterColumn.Taken => taken,
+                MeterColumn.Deaths => deaths, _ => throw new InvalidOperationException()
+            };
+            cell.gameObject.SetActive(columns.Visible(column));
+            SetRect((RectTransform)cell.transform, columns.X(column), y, columns.CellWidth(column), RowHeight);
+        }
+    }
+
     private static void SetRect(RectTransform rect, float x, float y, float width, float height)
     { rect.anchorMin = new Vector2(0f, 1f); rect.anchorMax = new Vector2(0f, 1f); rect.pivot = new Vector2(0f, 1f); rect.anchoredPosition = new Vector2(x, y); rect.sizeDelta = new Vector2(width, height); }
     private static Font ResolveFont()
@@ -267,9 +285,9 @@ internal sealed class CombatMeterUiController
     {
         if (_canvasRoot) UnityEngine.Object.Destroy(_canvasRoot);
         _canvasRoot = null; _panel = null; _canvasRect = null; _panelRect = null; _dragHandle = null; _panelImage = null;
-        _title = null; _state = null; _time = null; _playerHeader = null; _damageHeader = null; _percentHeader = null; _dpsHeader = null; _takenHeader = null; _font = null;
+        _title = null; _state = null; _time = null; _playerHeader = null; _damageHeader = null; _percentHeader = null; _dpsHeader = null; _takenHeader = null; _largestHeader = null; _deathsHeader = null; _font = null;
         _rows.Clear(); _lastVisible = false; _previewRendered = false; _edit.Exit(); _width = _scale = _opacity = _canvasWidth = _canvasHeight = 0f;
-        _barOpacity = 0f; _showBars = _showPercent = false;
+        _barOpacity = 0f; _showBars = _showPercent = _showLargest = _showDeaths = false;
         _lastLoggedEncounter = 0; _lastLoggedState = null; _nextRenderLogAt = 0f;
     }
     private static bool Near(float a, float b) => Math.Abs(a - b) < 0.01f;
@@ -278,36 +296,32 @@ internal sealed class CombatMeterUiController
     private sealed class RowView
     {
         internal readonly GameObject Root;
-        private readonly Text _name, _damage, _percent, _dps, _taken;
+        private readonly Text _name, _damage, _percent, _dps, _taken, _largest, _deaths;
         private readonly Image _background, _fill;
         private double _contribution;
         private uint _playerColorRgb;
-        internal RowView(GameObject root, Text name, Text damage, Text percent, Text dps, Text taken, Image background, Image fill)
-        { Root = root; _name = name; _damage = damage; _percent = percent; _dps = dps; _taken = taken; _background = background; _fill = fill; }
-        internal void ApplyWidth(float width, bool showPercent)
+        internal RowView(GameObject root, Text name, Text damage, Text percent, Text dps, Text taken, Image background, Image fill, Text largest, Text deaths)
+        { Root = root; _name = name; _damage = damage; _percent = percent; _dps = dps; _taken = taken; _largest = largest; _deaths = deaths; _background = background; _fill = fill; }
+        internal void ApplyWidth(float width, bool showPercent, bool showLargest, bool showDeaths)
         {
             ((RectTransform)Root.transform).sizeDelta = new Vector2(width, RowHeight);
-            float damageX = width - (showPercent ? 268f : 206f);
-            SetRect((RectTransform)_name.transform, 12f, 0f, Math.Max(70f, damageX - 20f), RowHeight);
-            SetRect((RectTransform)_damage.transform, damageX, 0f, 66f, RowHeight);
-            SetRect((RectTransform)_percent.transform, width - 198f, 0f, 58f, RowHeight);
-            SetRect((RectTransform)_dps.transform, width - 136f, 0f, 58f, RowHeight);
-            SetRect((RectTransform)_taken.transform, width - 72f, 0f, 60f, RowHeight);
+            ApplyColumns(new CombatMeterColumns(width, showPercent, showLargest, showDeaths), 0f,
+                _name, _damage, _percent, _dps, _largest, _taken, _deaths);
         }
-        internal void ApplyStyle(bool showBars, bool showPercent, float opacity)
+        internal void ApplyStyle(bool showBars, bool showPercent, bool showLargest, bool showDeaths, float opacity)
         {
-            _percent.gameObject.SetActive(showPercent); _background.raycastTarget = false; _fill.raycastTarget = false;
+            _percent.gameObject.SetActive(showPercent); _largest.gameObject.SetActive(showLargest); _deaths.gameObject.SetActive(showDeaths); _background.raycastTarget = false; _fill.raycastTarget = false;
             _fill.color = new Color(((_playerColorRgb >> 16) & 255) / 255f, ((_playerColorRgb >> 8) & 255) / 255f, (_playerColorRgb & 255) / 255f, opacity);
             _fill.gameObject.SetActive(showBars && _contribution > 0d);
         }
-        internal void Set(CombatMeterRowModel row, float width, bool showBars, bool showPercent, float opacity)
+        internal void Set(CombatMeterRowModel row, float width, bool showBars, bool showPercent, bool showLargest, bool showDeaths, float opacity)
         {
             _playerColorRgb = row.PlayerColorRgb;
             _contribution = Math.Max(0d, Math.Min(1d, row.DamageContribution));
-            int max = Math.Max(8, Math.Min(64, (int)((width - (showPercent ? 296f : 234f)) / 8f)));
-            _name.text = Ellipsize(row.NameText, max); _damage.text = row.DamageText; _percent.text = row.PercentText; _dps.text = row.DpsText; _taken.text = row.TakenText;
+            int max = Math.Max(8, Math.Min(64, (int)(new CombatMeterColumns(width, showPercent, showLargest, showDeaths).CellWidth(MeterColumn.Player) / 8f - 1f)));
+            _name.text = Ellipsize(row.NameText, max); _damage.text = row.DamageText; _percent.text = row.PercentText; _dps.text = row.DpsText; _taken.text = row.TakenText; _largest.text = row.LargestHitText; _deaths.text = row.DeathsText;
             RectTransform rect = (RectTransform)_fill.transform; rect.anchorMax = new Vector2((float)_contribution, 1f); rect.offsetMin = Vector2.zero; rect.offsetMax = Vector2.zero;
-            ApplyStyle(showBars, showPercent, opacity);
+            ApplyStyle(showBars, showPercent, showLargest, showDeaths, opacity);
         }
         private static string Ellipsize(string value, int max)
         { if (string.IsNullOrEmpty(value) || value.Length <= max) return value ?? ""; int length = max - 3; if (length > 0 && char.IsHighSurrogate(value[length - 1])) length--; return value.Substring(0, length) + "..."; }
