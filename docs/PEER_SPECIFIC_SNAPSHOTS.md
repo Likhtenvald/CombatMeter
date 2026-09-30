@@ -105,7 +105,8 @@ Attribution, Damage Done/Taken, DPS, Recovery, cluster merge and player colors a
 
 ## Checks
 
-Baseline 377 checks plus 25 new peer-snapshot checks = 402.
+The 0.12.0 release baseline was 465 checks. The distance-independent routing
+hotfix passes 485 checks, including 20 additional identity/lifecycle regressions.
 Existing snapshot adapter fixtures now register connected peers and observed Player
 identity, rather than relying on broadcast. Their obsolete global/Finished snapshot
 expectations are updated to per-player/NoEncounter expectations; checks were not removed.
@@ -121,5 +122,6 @@ dotnet run --project tests/ProbeChecks/ProbeChecks.csproj -c Release
 dotnet build DiagnosticDamageProbe.csproj -c Release --no-incremental
 ```
 
-The original 4C baseline was 402 checks. The hotfix extends the 465-check release\nbaseline with distance, vanilla-character registration, conflict and lifecycle regressions.
-No Valheim runtime test is performed by this milestone's automated workflow.
+The hotfix also passed a two-PC Listen Host multiplayer runtime test, including
+distance-independent routing. Managed checks do not execute Unity/Harmony; runtime
+validation was performed separately with the DLL built from commit 95ea0a3.

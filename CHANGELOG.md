@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.1 — Distance-independent multiplayer snapshots
+
+- Fixed missing damage tables when the Listen Host was far from connected clients.
+- Recipient identity is retained from the vanilla network session instead of requiring the client's Player object to remain instantiated on the host.
+- Remote combat continues to route to the correct Combat Cluster when the remote Player entity unloads on the host.
+- Disconnect invalidates identity bindings; reconnect requires fresh establishment, and conflicting mappings remain fail-closed.
+- DamageCommit transport and CombatSnapshot v1 are unchanged.
+- Successfully validated the fix in a two-PC Listen Host multiplayer test.
+
 ## 0.12.0 — Combat clusters and multiplayer routing
 
 - Added independent combat clusters based on actual PvE interactions; unrelated simultaneous fights no longer share one global table.

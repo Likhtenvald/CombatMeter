@@ -1,6 +1,6 @@
 # CombatMeter
 
-CombatMeter 0.12.0 shows host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
+CombatMeter 0.12.1 shows host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
 
 ## What it shows
 
