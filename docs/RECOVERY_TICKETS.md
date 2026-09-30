@@ -11,7 +11,7 @@ Recovery Timeout = 180   # 30..600 seconds
 DPS Idle Timeout = 6     # 1..20 seconds
 ```
 
-Only the listen host constructs and updates the canonical settings object. Clients may have different local config values, but they have no `EncounterManager` and only render the resulting state from `CombatSnapshot v1`.
+Only the listen host constructs and updates the canonical settings object. Clients may have different local config values, but they have no `EncounterManager` and only render the resulting state from the current `CombatSnapshot v2`.
 
 `inactive >= Combat Timeout` fires the Active transition. Without tickets this freezes the encounter at `LastActivityTime + Combat Timeout`; with a valid ticket it enters Recovery. A ticket expires when `now >= DeathTime + Recovery Timeout`.
 

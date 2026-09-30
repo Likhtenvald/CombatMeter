@@ -86,6 +86,6 @@ adapter paths. No assertion depends on operation speed. Coverage includes reset,
 invariant formatting, byte sizes, local exclusion, identity failures, shared
 sequence, routing isolation, deferred acceptance and environmental/Recovery guards.
 
-4C source selection, peer identity mapping, snapshot codec v1, RPC destinations,
+4C source selection, peer identity mapping, snapshot codec (now v2 in 1.0.0), RPC destinations,
 publication interval, environmental policy, attribution, Recovery, DPS, UI and colors
 are unchanged. No release metadata or frozen 0.11.2 package is modified.

@@ -38,5 +38,5 @@ NPC attacks, non-excluded unattributed damage, Tree/Incinerator and Poison/Burni
 attribution into both legacy and cluster encounters. Managed HitType doubles now
 use the verified game values rather than an unrelated implicit enum ordering.
 
-The 4C snapshot routing/delivery architecture, codec v1, identity mapping and sequence
+The 4C snapshot routing/delivery architecture, snapshot codec (now v2 in 1.0.0), identity mapping and sequence
 policy are unchanged. No release metadata or frozen 0.11.2 ZIP is changed.

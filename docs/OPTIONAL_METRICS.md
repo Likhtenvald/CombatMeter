@@ -1,9 +1,8 @@
-# Optional Largest Hit and Deaths (development, no release bump)
+# Optional Largest Hit and Deaths — CombatMeter 1.0.0
 
-Base: CombatMeter 0.12.1, commit 8c8a12497c672ed4ab7dc261c2a25372c00ea71f.
-This feature changes the snapshot protocol only; the plugin version is still 0.12.1.
-Install the same feature DLL on host and clients. Published 0.12.1 uses snapshot v1
-and cannot interoperate with this build.
+Install the same current CombatMeter version on host and clients. Release 1.0.0
+uses snapshot v2. Historical release 0.12.1 uses v1 and cannot interoperate with it.
+There is no explicit version negotiation or mixed-version compatibility.
 
 ## Authoritative statistics
 
@@ -78,5 +77,7 @@ bounds and formatting; actual shared column slots/geometry at minimum/default/
 maximum widths; remote client receipt without host Player instantiation, isolation,
 merge, reconnect and NoEncounter clearing.
 
-No additional performance logs or instrumentation are required. Runtime HUD and
-multiplayer validation of this feature remain to be performed with the supplied DLL.
+The stable baseline passes 531 managed checks. The runtime-tested feature commit
+b7d7ba306c452b7c0013518802c0656dd628f284 passed manual Valheim HUD and multiplayer
+validation, as confirmed for release acceptance. Release preparation changes only
+version metadata and documentation; managed checks do not execute Unity/Harmony.

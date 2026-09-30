@@ -22,7 +22,7 @@ Recovery freezes all open personal intervals at transition time. A later attribu
 
 ## Protocol and runtime checks
 
-`DamageCommit v2`, `Magic Attribution v1`, and `CombatSnapshot v1` are unchanged. The snapshot continues to carry final host-calculated DPS, so clients never recalculate it from local configuration.
+`DamageCommit v2`, `Magic Attribution v1`, and the current `CombatSnapshot v2` retain the same DPS semantics. The snapshot continues to carry final host-calculated DPS, so clients never recalculate it from local configuration.
 
 Single-player: with defaults, deal one burst and observe DPS decline for about six seconds, then remain stable while the encounter stays Active toward 20 seconds. Attack again before finish and verify the idle gap is excluded. Repeat with DamageTaken only, death/Recovery, Finished, a new encounter, and live changes `6 -> 2 -> 8`.
 

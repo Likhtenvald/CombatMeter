@@ -2,7 +2,7 @@
 
 Local settings affect only the current player's HUD or local diagnostic logging. Host settings use the Listen Host's value for canonical combat and statistics behavior across the session. Non-host clients may retain different values in their own config files; those values are ignored by aggregation, and clients render the host's finished `CombatSnapshot` values.
 
-Existing section and key names are preserved in `0.12.0`, with a new independent performance diagnostics key, so HUD position, hotkeys, and presentation preferences migrate without reset. Every setting is read live. BepInEx range validation and the pure core sanitizers protect numeric combat values; UI layout additionally replaces non-finite values and clamps size, opacity, and position before applying them.
+Release `1.0.0` preserves existing section and key names, including independent performance diagnostics, and adds two optional local UI column settings, so HUD position, hotkeys, and presentation preferences migrate without reset. Every setting is read live. BepInEx range validation and the pure core sanitizers protect numeric combat values; UI layout additionally replaces non-finite values and clamps size, opacity, and position before applying them.
 
 | Setting | Default | Bounds | Scope | Meaning |
 |---|---:|---|---|---|

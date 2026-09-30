@@ -1,12 +1,14 @@
 # CombatMeter
 
-CombatMeter 0.12.1 shows host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
+CombatMeter 1.0.0 is the first stable release, providing host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
 
 ## What it shows
 
 - Damage Done and each player's contribution percentage
 - DPS based on personal active damage time
 - Damage Taken
+- optional Largest Hit (largest accepted damage contribution), immediately after DPS
+- optional Deaths (accepted encounter deaths), as the final column
 - contribution bars with deterministic player colors and a draggable HUD
 - synchronized encounter state and elapsed time
 
@@ -32,9 +34,9 @@ Scale, width, opacity, contribution bars, hotkeys, visibility, and position are 
 
 ## Combat clusters and multiplayer authority
 
-CombatMeter groups combat by actual PvE interactions. Players fighting unrelated enemies can have independent combat meters. Combat clusters merge when their interactions connect, for example when players fight the same PvE combatant. Distance is not a clustering rule.
+CombatMeter groups combat by actual PvE interactions. Players fighting unrelated enemies can have independent combat meters. Combat clusters merge when their interactions connect, for example when players fight the same PvE combatant. Distance is not a clustering rule. Merged clusters do not split during the encounter. After it finishes, later independent fights can form separate clusters again.
 
-The Listen Host calculates canonical Damage, contribution, DPS, Taken, encounter state, and elapsed time. Each player receives the authoritative snapshot for their own current combat cluster; unrelated fights do not share HUD rows or statistics. Players without a current cluster receive an empty encounter view. Combat timing values in a client's local config do not override the host.
+The Listen Host calculates canonical Damage, contribution, DPS, Taken, Largest Hit, Deaths, encounter state, and elapsed time. Each player receives the authoritative snapshot for their own current combat cluster; unrelated fights do not share HUD rows or statistics. Players without a current cluster receive an empty encounter view. Combat timing values in a client's local config do not override the host.
 
 Recovery remains host-authoritative and local to each combat cluster. Multiple dead players in one cluster can have independent Recovery periods.
 
@@ -44,6 +46,8 @@ Damage contribution bars use deterministic colors based on PlayerID. The palette
 
 CombatMeter is intended for cooperative play and is not an anti-cheat system.
 
+All multiplayer participants must use the same current CombatMeter version. Version 1.0.0 uses snapshot v2; previous v1 builds are incompatible. Mixed-version sessions are not supported. Snapshot routing remains valid when a remote player is too far away for the host to observe their character.
+
 ## Configuration
 
 Host-controlled settings:
@@ -52,7 +56,7 @@ Host-controlled settings:
 - `Recovery Timeout = 180`
 - `DPS Idle Timeout = 6`
 
-UI settings are personal and can differ between players. The complete setting descriptions are available in BepInEx Configuration Manager and in the source project configuration documentation.
+UI settings are personal and can differ between players. In [UI], Show Largest Hit = false and Show Deaths = false are independent, live options disabled by default. The host collects both statistics regardless of column visibility. The complete setting descriptions are available in BepInEx Configuration Manager and in the source project configuration documentation.
 
 All diagnostic categories are disabled by default. Performance measurement is an optional troubleshooting facility with its own `[Diagnostics] EnablePerformanceDiagnosticLogging = false` setting. Other diagnostic switches do not enable it; when disabled, performance timing and counters are bypassed.
 

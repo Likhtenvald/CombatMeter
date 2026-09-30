@@ -1,6 +1,6 @@
 # Combat Meter UI MVP
 
-Milestones 3B–3F provide the read-only in-game meter, configurable host encounter timing, and personal active-time DPS for plugin `0.11.2`. The HUD is a consumer of `CombatSnapshotStore`; it does not read local encounter timeout config or calculate transitions. Damage totals, DPS, elapsed time, encounter state, and membership all arrive already computed by the listen host in `CombatSnapshot v1`.
+Milestones 3B–3F provide the read-only in-game meter, configurable host encounter timing, and personal active-time DPS for plugin `0.11.2`. The HUD is a consumer of `CombatSnapshotStore`; it does not read local encounter timeout config or calculate transitions. Damage totals, DPS, elapsed time, encounter state, and membership all arrive already computed by the listen host in the snapshot. Historical milestones used v1; CombatMeter 1.0.0 uses v2 with optional Largest Hit and Deaths (see OPTIONAL_METRICS.md).
 
 The listen host defaults to a 20-second combat inactivity timeout, a 180-second recovery timeout, and a 6-second personal DPS idle timeout. Client-local values do not affect UI state: Active, Recovery, Finished, elapsed time, and DPS continue to come exclusively from the host snapshot.
 

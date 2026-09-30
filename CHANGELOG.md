@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0
+
+- First stable CombatMeter release for single-player and Listen Host multiplayer, with host-authoritative per-player Damage Done, contribution percentage, personal active-time DPS, and Damage Taken.
+- Added optional Largest Hit immediately after DPS and optional Deaths as the final column; both are disabled by default and configured locally.
+- Independent Combat Clusters keep separate fights separate, merge when PvE interactions connect groups, and do not split again during that encounter. Later encounters can be independent again.
+- Recovery remains host-authoritative and cluster-local, including independent periods for multiple dead players.
+- Peer-specific snapshots use distance-independent session identity routing and clear stale encounter views. CombatSnapshot v2 carries authoritative Largest Hit and Deaths; all participants must use the same current version.
+- Deterministic player colors, contribution bars, and a draggable configurable HUD remain available.
+- Fall, Drowning, and Smoke are excluded from combat statistics and encounter activity; other environmental damage retains its existing policy.
+- Performance diagnostics remain explicitly opt-in and disabled by default.
+
 ## 0.12.1 — Distance-independent multiplayer snapshots
 
 - Fixed missing damage tables when the Listen Host was far from connected clients.

@@ -92,10 +92,10 @@ Remote ready peers receive individual routed RPCs addressed to peer.m_uid.
 Zero, local-host destinations and duplicate destinations are skipped. Single-player
 publication sends no remote snapshot. There is no Everybody snapshot broadcast.
 
-Largest Hit / Deaths development uses CombatSnapshot.ProtocolVersion = 2 and
+CombatMeter 1.0.0 uses CombatSnapshot.ProtocolVersion = 2 and
 CombatMeter.CombatSnapshot.v2. V1 was used through release 0.12.1. V2 appends
 LargestHit (Single) and Deaths (Int32) to each player row. Mixed v1/v2 sessions are
-unsupported: all participants must install the same new build. There is no
+unsupported: all participants must install the same current CombatMeter version. There is no
 negotiation, fallback, second RPC or parallel delivery. Trailing data is still rejected.
 See OPTIONAL_METRICS.md for the exact row format and semantics.
 Client receive/store validation remains unchanged: actual-host sender, matching host
@@ -109,8 +109,8 @@ Attribution, Damage Done/Taken, DPS, Recovery, cluster merge and player colors a
 
 ## Checks
 
-The 0.12.0 release baseline was 465 checks. The distance-independent routing
-hotfix passes 485 checks, including 20 additional identity/lifecycle regressions.
+The stable 1.0.0 baseline passes 531 managed checks, including identity/lifecycle
+regressions and optional metrics, snapshot v2, and HUD column ordering checks.
 Existing snapshot adapter fixtures now register connected peers and observed Player
 identity, rather than relying on broadcast. Their obsolete global/Finished snapshot
 expectations are updated to per-player/NoEncounter expectations; checks were not removed.

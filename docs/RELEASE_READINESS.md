@@ -1,23 +1,34 @@
-# Pre-release packaging audit
+# Stable release packaging — CombatMeter 1.0.0
 
-CombatMeter `0.11.2` now uses public plugin name `CombatMeter`, GUID `Likhtenvald.CombatMeter`, assembly/DLL `CombatMeter.dll`, and Thunderstore package name `CombatMeter`. Internal `DiagnosticDamageProbe` namespaces and the project filename remain unchanged to minimize implementation risk.
+The canonical project Version generates BuildInfo.Version for the BepInEx plugin
+attribute. Plugin and manifest version are 1.0.0; assembly version is 1.0.0.0.
+Plugin GUID Likhtenvald.CombatMeter, CombatMeter package/DLL name, and internal
+DiagnosticDamageProbe namespaces and project filename remain unchanged.
 
-The project `<Version>` is canonical. MSBuild generates `BuildInfo.Version`, which supplies the BepInEx attribute/runtime version. The packaging script reads the same project value and rejects a mismatched manifest or filename.
+The runtime-tested feature commit b7d7ba306c452b7c0013518802c0656dd628f284 is frozen.
+Release preparation changes only version metadata and documentation. The baseline
+contains 531 managed checks; final main must pass these and a clean Release build
+with zero warnings/errors before packaging.
 
-Runtime package dependency: `denikson-BepInExPack_Valheim-5.4.2350`. Valheim and Unity assemblies are game-provided; Harmony is supplied by BepInEx. Test doubles and decompiler dependencies are development-only. No Jotunn, ConfigSync, or other runtime library is used.
+Runtime dependency remains denikson-BepInExPack_Valheim-5.4.2350. Valheim and Unity
+assemblies are game-provided; Harmony is supplied by BepInEx. No test doubles,
+decompiler dependencies, or other runtime libraries belong in the package.
 
-`manifest.json`, player README, changelog, release notes, Release DLL, and allowlist packaging script are present. No repository URL was discoverable, so `website_url` is empty. No author-selected license was found, so no LICENSE was invented.
+The canonical scripts/package.ps1 produces outputs/package/CombatMeter-1.0.0.zip
+with exactly these entries:
 
-A Thunderstore-required `icon.png` is absent. `scripts/package.ps1` creates an explicitly incomplete staging directory and then fails before producing a ZIP. Once an approved icon is added, the script will create `outputs/package/CombatMeter-0.11.2.zip`, reopen it, and compare its actual entries to the allowlist.
+    CHANGELOG.md
+    LICENSE
+    README.md
+    icon.png
+    manifest.json
+    plugins/CombatMeter.dll
 
-Expected archive:
+The repository URL is https://github.com/Likhtenvald/CombatMeter; the license is MIT.
+Independently reopen the ZIP, compare every entry to its source, and require the
+DLL to match the final clean main Release output. Preserve all previous ZIPs.
+Upload to Thunderstore is manual.
 
-```text
-CHANGELOG.md
-README.md
-icon.png
-manifest.json
-plugins/CombatMeter.dll
-```
-
-LICENSE is included automatically if the author later adds one.
+All multiplayer participants must use the same current version. Snapshot RPC is
+CombatMeter.CombatSnapshot.v2, protocol 2; no explicit version negotiation or
+mixed-version compatibility is provided. Dedicated servers remain unsupported.

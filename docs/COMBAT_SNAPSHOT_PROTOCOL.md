@@ -1,4 +1,11 @@
-# CombatSnapshot protocol v1
+# Historical CombatSnapshot protocol v1
+
+This document records the original milestone 3A global broadcast architecture.
+It is not the current protocol or routing model. CombatMeter 1.0.0 uses directed
+CombatMeter.CombatSnapshot.v2 with ProtocolVersion = 2. See
+[peer-specific snapshots](PEER_SPECIFIC_SNAPSHOTS.md) for current authority,
+identity, epoch/sequence and routing, and [optional metrics](OPTIONAL_METRICS.md)
+for the exact v2 row format. No v1 fallback or mixed-version negotiation exists.
 
 Milestone 3A (plugin `0.8.0`) adds a full-state synchronization boundary between the listen-host combat core and future UI. It does not change Damage Done, Damage Taken, DPS, PvE filtering, recovery tickets, magic attribution, or summon attribution.
 
