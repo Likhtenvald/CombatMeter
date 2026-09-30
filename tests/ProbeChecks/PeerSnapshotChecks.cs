@@ -332,7 +332,146 @@ internal static class PeerSnapshotChecks
             bytes = CombatSnapshotCodec.Encode(next); Array.Copy(BitConverter.GetBytes(float.NaN), 0, bytes, bytes.Length - 8, 4);
             h.DeliverBytes(202, 101, bytes); Eq(good, h.Remote(202));
         });
+        Test("summon first hit uses bound vanilla name before snapshot", () =>
+        {
+            var h = NamedHost(); h.Summon(2002, 2, 10, 7);
+            var stats = h.Stats(2002); Eq("Joe Peach", stats.DisplayName); Eq(7f, stats.DamageDone);
+            Eq(1, h.Adapter.Clusters.ActiveCount); h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+            Eq("Joe Peach", DiagnosticDamageProbe.UI.CombatMeterPresenter.Build(h.Remote(202)).Rows.Single().NameText);
+        });
+        Test("multiple summon hits keep one row and accumulate damage", () =>
+        {
+            var h = NamedHost(); h.Summon(2002, 2, 10, 7); h.Summon(2002, 2, 10, 3);
+            Eq(10f, h.Stats(2002).DamageDone); Eq("Joe Peach", h.Stats(2002).DisplayName);
+            h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002); Eq(7f, h.Remote(202).Players.Single().LargestHit);
+        });
+        Test("direct then summon keeps one PlayerID row", () =>
+        {
+            var h = NamedHost(); h.Done(2002, 10, 4); h.Summon(2002, 2, 10, 7); h.Now = 1; h.Publish();
+            Rows(h.Remote(202), 2002); Eq(11f, h.Stats(2002).DamageDone); Eq("Joe Peach", h.Stats(2002).DisplayName);
+        });
+        Test("summon then direct keeps one PlayerID row", () =>
+        {
+            var h = NamedHost(); h.Summon(2002, 2, 10, 7); h.Done(2002, 10, 4); h.Now = 1; h.Publish();
+            Rows(h.Remote(202), 2002); Eq(11f, h.Stats(2002).DamageDone); Eq("Joe Peach", h.Stats(2002).DisplayName);
+        });
+        Test("unknown summon owner name retains safe HUD fallback", () =>
+        {
+            var h = NamedHost(""); h.Summon(2002, 2, 10, 7); h.Now = 1; h.Publish();
+            Rows(h.Remote(202), 2002); Eq("", h.Stats(2002).DisplayName);
+            Eq("Player 2002", DiagnosticDamageProbe.UI.CombatMeterPresenter.Build(h.Remote(202)).Rows.Single().NameText);
+        });
+        Test("empty peer metadata cannot erase cached name", () =>
+        {
+            var h = NamedHost(); h.Net.Peers.Single().m_playerName = ""; h.Now = 1; h.Publish();
+            h.Summon(2002, 2, 10, 7); Eq("Joe Peach", h.Stats(2002).DisplayName);
+        });
+        Test("late vanilla name upgrades unnamed statistics without another hit", () =>
+        {
+            var h = NamedHost(""); h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName);
+            h.Net.Peers.Single().m_playerName = "Joe Peach"; h.Now = 1; h.Publish();
+            Eq("Joe Peach", h.Stats(2002).DisplayName); Eq(7f, h.Stats(2002).DamageDone);
+        });
+        Test("known peer name survives Player unload and temporarily empty metadata", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); Player.Instances.Single(p => p.PlayerId == 2002).PlayerName = "Joe Peach";
+            h.Net.Peers.Single().m_playerName = "Joe Peach"; h.Publish(); h.Unload(2002);
+            h.Net.Peers.Single().m_playerName = ""; h.Now = 1; h.Publish(); h.Summon(2002, 2, 10, 7);
+            Eq("Joe Peach", h.Stats(2002).DisplayName); h.Now = 2; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("initial visibility absent still uses vanilla peer name", () =>
+        {
+            var h = NamedHost(); True(Player.Instances.All(p => p.PlayerId != 2002));
+            h.Summon(2002, 2, 10, 7); h.Now = 1; h.Publish(); Eq("Joe Peach", h.Remote(202).Players.Single().DisplayName);
+        });
+        Test("disconnect drops cached metadata for new encounter", () =>
+        {
+            var h = NamedHost(); h.Net.Peers.Clear(); h.Adapter.Disconnected(h.Net);
+            h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName); Eq(7f, h.Stats(2002).DamageDone);
+        });
+        Test("reconnect same ID requires fresh name and can refresh it", () =>
+        {
+            var h = NamedHost(); h.Net.Peers.Clear(); h.Adapter.Disconnected(h.Net);
+            h.Net.Peers.Add(new ZNetPeer { m_uid = 202, m_playerID = 2002 }); h.Now = 1; h.Publish();
+            h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName);
+            h.Net.Peers.Single().m_playerName = "Fresh"; h.Now = 2; h.Publish(); Eq("Fresh", h.Stats(2002).DisplayName);
+        });
+        Test("peer replacement cannot transfer old name to new player ID", () =>
+        {
+            var h = NamedHost(); h.Net.Peers.Clear(); h.Net.Peers.Add(new ZNetPeer { m_uid = 202, m_playerID = 3003 });
+            h.Now = 1; h.Publish(); h.Summon(3003, 3, 10, 7); Eq("", h.Stats(3003).DisplayName);
+            h.Summon(2002, 2, 20, 4); Eq("", h.Stats(2002).DisplayName);
+        });
+        Test("world reset does not retain name metadata", () =>
+        {
+            var h = NamedHost(); h.Adapter.Stop(h.Net);
+            var next = NamedHost(""); next.Summon(2002, 2, 10, 7); Eq("", next.Stats(2002).DisplayName);
+        });
+        Test("two summon owners remain isolated through cluster merge", () =>
+        {
+            var h = NamedHost(); h.AddPeer(303, null); h.Net.Peers.Last().m_playerID = 3003; h.Net.Peers.Last().m_playerName = "Alice";
+            h.Now = 1; h.Publish(); h.Summon(2002, 2, 10, 7); h.Summon(3003, 3, 20, 11); h.Now = 2; h.Publish();
+            Rows(h.Remote(202), 2002); Rows(h.Remote(303), 3003);
+            h.Summon(2002, 2, 20, 3); h.Now = 3; h.Publish(); Rows(h.Remote(202), 2002, 3003); Rows(h.Remote(303), 2002, 3003);
+            Eq("Joe Peach", h.Stats(2002).DisplayName); Eq("Alice", h.Stats(3003).DisplayName);
+            Eq(10f, h.Stats(2002).DamageDone); Eq(11f, h.Stats(3003).DamageDone);
+        });
+        Test("identical names never combine PlayerIDs", () =>
+        {
+            var h = NamedHost(); h.AddPeer(303, null); h.Net.Peers.Last().m_playerID = 3003; h.Net.Peers.Last().m_playerName = "Joe Peach";
+            h.Now = 1; h.Publish(); h.Summon(2002, 2, 10, 7); h.Summon(3003, 3, 10, 11); h.Now = 2; h.Publish();
+            Rows(h.Remote(202), 2002, 3003); Eq(7f, h.Stats(2002).DamageDone); Eq(11f, h.Stats(3003).DamageDone);
+        });
+        Test("conflicting observed identity cannot supply name or change attribution", () =>
+        {
+            var h = NamedHost(); var other = h.AddEntity(202, 3003); other.PlayerName = "Wrong";
+            h.Now = 1; h.Publish(); h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName);
+            h.Now = 2; h.Publish(); Empty(h.Remote(202)); Eq(7f, h.Stats(2002).DamageDone);
+        });
+        Test("zero identity name cannot be used for an attributed owner", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers.Single().m_playerName = "Wrong"; h.Publish();
+            h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+        });
+        Test("local host summon first hit uses local name", () =>
+        {
+            var h = new Host(); h.Summon(1001, 1, 10, 7); Eq("Tester", h.Stats(1001).DisplayName); h.Publish(); Rows(h.Local, 1001);
+        });
+        Test("name update preserves Recovery and metrics", () =>
+        {
+            var h = NamedHost(""); h.Summon(2002, 2, 10, 7); h.Adapter.ObservePlayerDeath(2002, "death");
+            h.Now = 21; h.Publish(); Eq(EncounterState.Recovery, h.Remote(202).EncounterState);
+            h.Net.Peers.Single().m_playerName = "Joe Peach"; h.Now = 22; h.Publish(); var row = h.Remote(202).Players.Single();
+            Eq(EncounterState.Recovery, h.Remote(202).EncounterState); Eq(1, row.Deaths); Eq(7f, row.LargestHit); Eq(7f, row.DamageDone);
+            Eq("Joe Peach", row.DisplayName);
+        });
+        Test("summon hits and snapshot cycles add no scene scans", () =>
+        {
+            var h = NamedHost(); int scans = Player.SceneScans;
+            for (int i = 1; i <= 5; i++) { h.Summon(2002, 2, 10, 1); h.Now = i; h.Publish(); }
+            Eq(scans, Player.SceneScans); Eq("Joe Peach", h.Stats(2002).DisplayName);
+        });
+        Test("old observed entity cannot leak its name into reconnect binding", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Net.Peers.Single().m_playerName = "Old"; h.Publish();
+            h.Net.Peers.Clear(); h.Adapter.Disconnected(h.Net);
+            h.Net.Peers.Add(new ZNetPeer { m_uid = 202, m_playerID = 2002 }); h.Now = 1; h.Publish();
+            h.Summon(2002, 2, 10, 7); Eq("", h.Stats(2002).DisplayName);
+        });
+        Test("first summon before first publication is upgraded in first snapshot", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers.Single().m_playerID = 2002;
+            h.Net.Peers.Single().m_playerName = "Joe Peach"; h.Summon(2002, 2, 10, 7); h.Publish();
+            Eq("Joe Peach", h.Remote(202).Players.Single().DisplayName); Eq(7f, h.Stats(2002).DamageDone);
+        });
         return _passed;
+    }
+
+    private static Host NamedHost(string name = "Joe Peach")
+    {
+        var h = new Host(); h.AddPeer(202, null);
+        h.Net.Peers.Single().m_playerID = 2002; h.Net.Peers.Single().m_playerName = name;
+        h.Publish(); return h;
     }
 
     private sealed class Host
@@ -365,6 +504,13 @@ internal static class PeerSnapshotChecks
             Net.Peers.Add(new ZNetPeer { m_uid = peer, m_playerID = player ?? 0, Ready = ready });
             if (player.HasValue) AddEntity(peer, player.Value);
             var c = new Client(peer, () => Now); _clients.Add(peer, c); Use();
+        }
+        internal DiagnosticDamageProbe.Statistics.PlayerCombatStatistics Stats(long player)
+        { True(Adapter.Clusters.TryGetClusterForPlayer(player, out var c)); True(c.Encounter.Statistics.TryGet(player, out var stats)); return stats; }
+        internal void Summon(long player, uint summon, uint victim, float loss)
+        {
+            Use(); True(Adapter.ObserveSummonProvenance(101, 77, summon, player));
+            Adapter.Observe(101, new DamageFacts(99, victim, false, null, AttackerClass.NPC, null, 1, "NPC", "Root", 77, summon), loss);
         }
         internal CombatCluster Done(long player, uint npc, float loss = 3)
         {

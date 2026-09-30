@@ -13,16 +13,21 @@ internal sealed class SessionPlayerIdentity
         internal bool FromCharacter;
         internal bool Seen, Conflict;
         internal string Status;
+        internal string DisplayName;
     }
     private readonly Dictionary<long, Binding> _bindings = new Dictionary<long, Binding>();
     private readonly Dictionary<long, Binding> _players = new Dictionary<long, Binding>();
     private readonly List<long> _removed = new List<long>();
     private readonly List<Player> _observed = new List<Player>();
     private readonly Action<string> _log;
+    private readonly Action<long, string> _nameObserved;
+    private long _localPlayerId;
+    private string _localDisplayName;
 
-    internal SessionPlayerIdentity(Action<string> log)
+    internal SessionPlayerIdentity(Action<string> log, Action<long, string> nameObserved = null)
     {
         _log = log;
+        _nameObserved = nameObserved;
         // One bootstrap scan per host session; subsequent changes arrive through lifecycle notifications.
         foreach (Player player in Player.GetAllPlayers()) Observe(player);
     }
@@ -34,6 +39,14 @@ internal sealed class SessionPlayerIdentity
 
     internal void Sync(List<ZNetPeer> peers, long hostPeer, long? localPlayerId)
     {
+        if (_localPlayerId != (localPlayerId ?? 0)) _localDisplayName = null;
+        _localPlayerId = localPlayerId ?? 0;
+        if (_localPlayerId != 0 && Player.m_localPlayer && Player.m_localPlayer.GetPlayerID() == _localPlayerId)
+        {
+            string name = Player.m_localPlayer.GetPlayerName();
+            if (!string.IsNullOrEmpty(name)) _localDisplayName = name;
+            if (!string.IsNullOrEmpty(_localDisplayName)) _nameObserved?.Invoke(_localPlayerId, _localDisplayName);
+        }
         foreach (Binding b in _bindings.Values) b.Seen = false;
         foreach (ZNetPeer peer in peers)
         {
@@ -89,7 +102,13 @@ internal sealed class SessionPlayerIdentity
         {
             if (b.Conflict) continue;
             if (b.PlayerId == 0 || b.CurrentId == 0) Status(b, "CombatSnapshotIdentityUnresolved", "ZeroPlayerId");
-            else Status(b, "CombatIdentityBound", "VanillaPeer");
+            else
+            {
+                Status(b, "CombatIdentityBound", "VanillaPeer");
+                // PeerInfo carries the vanilla character name even without a replicated Player.
+                if (!string.IsNullOrEmpty(b.Peer.m_playerName)) b.DisplayName = b.Peer.m_playerName;
+                if (!string.IsNullOrEmpty(b.DisplayName)) _nameObserved?.Invoke(b.PlayerId, b.DisplayName);
+            }
         }
     }
     private long ReadVanillaIdentity(Binding b)
@@ -119,6 +138,15 @@ internal sealed class SessionPlayerIdentity
             !b.Peer.IsReady() || b.Peer.m_uid != peer || b.PlayerId == 0 || b.CurrentId != b.PlayerId) return null;
         return b.PlayerId;
     }
+    // Metadata only: never establishes or changes attribution/routing identity.
+    internal string ResolveDisplayName(long playerId)
+    {
+        if (playerId == 0) return null;
+        if (playerId == _localPlayerId) return _localDisplayName;
+        return _players.TryGetValue(playerId, out Binding b) && Resolve(b.Peer.m_uid) == playerId
+            ? b.DisplayName : null;
+    }
+
     private void Reject(Binding b, string reason)
     {
         if (b.Conflict) return;

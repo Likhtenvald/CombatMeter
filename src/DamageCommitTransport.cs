@@ -41,6 +41,7 @@ internal sealed class DamageCommitTransport
     private CombatClusterManager _clusters;
     private CombatMeterPerformance _performance;
     private SessionPlayerIdentity _identities;
+    private Func<long, string> _displayName;
     private readonly Func<long> _performanceTimestamp;
     private MagicAttributionResolver _attribution;
     private EventSequence _attributionSequence;
@@ -118,7 +119,9 @@ internal sealed class DamageCommitTransport
             _encounterSettings = host ? new EncounterSettings(ReadSoftTimeout(), ReadRecoveryTimeout(), ReadDpsIdleTimeout()) : null;
             _encounter = host ? new EncounterManager(new CombatStatisticsAggregator(), _encounterSettings, Plugin.EncounterLog) : null;
             _clusters = host ? new CombatClusterManager(_encounterSettings) : null;
-            _identities = host ? new SessionPlayerIdentity(Plugin.TransportLog) : null;
+            _identities = host ? new SessionPlayerIdentity(Plugin.TransportLog, ObserveDisplayName) : null;
+            _displayName = host ? _identities.ResolveDisplayName : (Func<long, string>)null;
+            if (host) _identities.Sync(_net.GetPeers(), peer, HostPlayerIdentity.ResolveLocal(peer));
             if (host) LogEncounterSettings("CombatEncounterSettings");
             _attribution = host ? new MagicAttributionResolver() : null;
             _attributionSequence = new EventSequence(peer, Guid.NewGuid());
@@ -514,8 +517,8 @@ internal sealed class DamageCommitTransport
                 Plugin.MagicLog("DotTickDistributed event=" + commit.Id + " kind=" + (DotKind)(commit.Facts.DotKind - 1) +
                     " effective=" + commit.EffectiveHpLoss.ToString(CultureInfo.InvariantCulture) + " portions=" + attributed.DamageDone.Count);
             double eventTime = EventTime(commit);
-            _encounter.Accept(attributed, now, eventTime);
-            if (_clusters.Accept(attributed, now, eventTime) == null && IsCurrentPerformance(performance)) performance.DamageIgnored++;
+            _encounter.Accept(attributed, now, eventTime, _displayName);
+            if (_clusters.Accept(attributed, now, eventTime, _displayName) == null && IsCurrentPerformance(performance)) performance.DamageIgnored++;
 
         }
         finally { if (IsCurrentPerformance(performance)) performance.CommitProcessing.Record(PerformanceTimestamp() - started); }
@@ -566,6 +569,14 @@ internal sealed class DamageCommitTransport
         return package.GetArray();
     }
 
+    private void ObserveDisplayName(long playerId, string name)
+    {
+        // Upgrade an existing unnamed row even if no more damage arrives. Never create a row.
+        if (_encounter.Statistics.TryGet(playerId, out var legacy)) legacy.UpdateDisplayName(name);
+        if (_clusters.TryGetClusterForPlayer(playerId, out var cluster) &&
+            cluster.Encounter.Statistics.TryGet(playerId, out var statistics)) statistics.UpdateDisplayName(name);
+    }
+
     internal void ObserveIdentityPlayer(Player player) => _identities?.Observe(player);
     internal void ForgetIdentityPlayer(Player player) => _identities?.Forget(player);
 
@@ -604,6 +615,7 @@ internal sealed class DamageCommitTransport
         _encounter = null;
         _clusters = null;
         _identities = null;
+        _displayName = null;
         _performance = null;
         _encounterSettings = null;
         _attribution = null;

@@ -111,6 +111,7 @@ internal sealed class ZNetPeer
 {
     internal long m_uid;
     internal long m_playerID;
+    internal string m_playerName = "";
     internal ZDOID m_characterID;
     internal bool Ready = true;
     internal bool IsReady() => Ready && m_uid != 0;
@@ -154,7 +155,8 @@ internal sealed class Player : Character
 {
     internal static Player m_localPlayer;
     internal static readonly List<Player> Instances = new List<Player>();
-    internal static List<Player> GetAllPlayers() => Instances;
+    internal static int SceneScans;
+    internal static List<Player> GetAllPlayers() { SceneScans++; return Instances; }
     internal long PlayerId = 9223372036854775806;
     internal string PlayerName = "Tester";
     internal long GetPlayerID() => PlayerId;

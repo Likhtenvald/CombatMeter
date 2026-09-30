@@ -30,7 +30,7 @@ internal sealed class PlayerCombatStatistics
         DamageTaken += amount;
     }
 
-    private void UpdateDisplayName(string displayName)
+    internal void UpdateDisplayName(string displayName)
     {
         if (!string.IsNullOrEmpty(displayName)) DisplayName = displayName;
     }

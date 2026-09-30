@@ -28,7 +28,7 @@ internal sealed class CombatClusterManager
     internal CombatCluster Accept(DamageCommit commit, double now, double? eventTime = null) =>
         Accept(new AttributedDamageEvent(commit, null, true), now, eventTime);
 
-    internal CombatCluster Accept(AttributedDamageEvent damage, double now, double? eventTime = null)
+    internal CombatCluster Accept(AttributedDamageEvent damage, double now, double? eventTime = null, Func<long, string> displayName = null)
     {
         ValidateTime(now); ValidateTime(eventTime ?? now);
         Update(now);
@@ -54,7 +54,7 @@ internal sealed class CombatClusterManager
         }
         foreach (CombatNode node in nodes) { target.Add(node); _membership[node] = target; }
         // Apply the complete attributed event exactly once, after all component unions.
-        target.Encounter.Accept(damage, now, eventTime);
+        target.Encounter.Accept(damage, now, eventTime, displayName);
         return target;
     }
 

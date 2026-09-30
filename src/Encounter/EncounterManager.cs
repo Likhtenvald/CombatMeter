@@ -76,7 +76,7 @@ internal sealed class EncounterManager
         return true;
     }
 
-    internal bool Accept(AttributedDamageEvent attributed, double now, double? eventTime = null)
+    internal bool Accept(AttributedDamageEvent attributed, double now, double? eventTime = null, Func<long, string> displayName = null)
     {
         if (attributed.ApplyVanillaClassification) return Accept(attributed.Commit, now, eventTime);
         ValidateTime(now); double chronology = eventTime ?? now; ValidateTime(chronology); Update(now);
@@ -92,7 +92,7 @@ internal sealed class EncounterManager
         {
             if (!portion.PlayerId.HasValue || !(portion.Damage > 0f)) continue;
             eligibleReengagement |= TryClearRecoveryTicket(portion.PlayerId.Value, chronology);
-            Statistics.Apply(new PveClassification(PveStatisticKind.DamageDone, portion.PlayerId.Value, ""), portion.Damage);
+            Statistics.Apply(new PveClassification(PveStatisticKind.DamageDone, portion.PlayerId.Value, displayName?.Invoke(portion.PlayerId.Value)), portion.Damage);
             if (!_participants.ContainsKey(portion.PlayerId.Value))
                 _participants.Add(portion.PlayerId.Value, new EncounterParticipant(portion.PlayerId.Value));
             RecordOffensiveActivity(portion.PlayerId.Value, chronology);
