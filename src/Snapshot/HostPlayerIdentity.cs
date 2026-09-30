@@ -1,7 +1,7 @@
 namespace DiagnosticDamageProbe.Snapshot;
 
-// Uses Valheim's registered Player instances, never scene scans or identity guesses.
-// Recomputed at publication time so missing entities/ownership changes cannot retain a stale route.
+// Local identity and legacy observed-entity inspection only.
+// Remote publication uses SessionPlayerIdentity, independently of entity availability.
 internal static class HostPlayerIdentity
 {
     internal static long? ResolveLocal(long hostPeer)

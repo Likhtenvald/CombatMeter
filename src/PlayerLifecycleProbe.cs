@@ -120,14 +120,20 @@ internal static class GameSpawnPlayerLifecyclePatch
 internal static class PlayerStartLifecyclePatch
 {
     [HarmonyPostfix]
-    private static void Postfix(Player __instance) =>
+    private static void Postfix(Player __instance)
+    {
+        Plugin.Transport?.ObserveIdentityPlayer(__instance);
         PlayerLifecycleProbe.Observe("PlayerLifecycleInstanceObserved", "Player.Start.Postfix", __instance);
+    }
 }
 
 [HarmonyPatch(typeof(Player), "OnDestroy")]
 internal static class PlayerDestroyLifecyclePatch
 {
     [HarmonyPrefix]
-    private static void Prefix(Player __instance) =>
+    private static void Prefix(Player __instance)
+    {
+        Plugin.Transport?.ForgetIdentityPlayer(__instance);
         PlayerLifecycleProbe.Observe("PlayerLifecycleInstanceObserved", "Player.OnDestroy.Prefix", __instance);
+    }
 }

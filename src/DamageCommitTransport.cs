@@ -40,6 +40,7 @@ internal sealed class DamageCommitTransport
     private EncounterManager _encounter;
     private CombatClusterManager _clusters;
     private CombatMeterPerformance _performance;
+    private SessionPlayerIdentity _identities;
     private readonly Func<long> _performanceTimestamp;
     private MagicAttributionResolver _attribution;
     private EventSequence _attributionSequence;
@@ -117,6 +118,7 @@ internal sealed class DamageCommitTransport
             _encounterSettings = host ? new EncounterSettings(ReadSoftTimeout(), ReadRecoveryTimeout(), ReadDpsIdleTimeout()) : null;
             _encounter = host ? new EncounterManager(new CombatStatisticsAggregator(), _encounterSettings, Plugin.EncounterLog) : null;
             _clusters = host ? new CombatClusterManager(_encounterSettings) : null;
+            _identities = host ? new SessionPlayerIdentity(Plugin.TransportLog) : null;
             if (host) LogEncounterSettings("CombatEncounterSettings");
             _attribution = host ? new MagicAttributionResolver() : null;
             _attributionSequence = new EventSequence(peer, Guid.NewGuid());
@@ -266,6 +268,7 @@ internal sealed class DamageCommitTransport
         try
         {
             _nextSnapshotAt = now + SnapshotIntervalSeconds;
+            _identities.Sync(_net.GetPeers(), _session.Peer, HostPlayerIdentity.ResolveLocal(_session.Peer));
             if (IsCurrentPerformance(performance)) performance.ReadyPeers = 0;
             long sequence = checked(++_snapshotSequence); // Once per cycle, shared by all recipients.
             CombatSnapshot snapshot = BuildRecipientSnapshot(sequence, ResolveSnapshotPlayer(_session.Peer, true), now);
@@ -295,7 +298,7 @@ internal sealed class DamageCommitTransport
     {
         CombatMeterPerformance performance = GetPerformance();
         long started = performance != null ? PerformanceTimestamp() : 0;
-        long? player = local ? HostPlayerIdentity.ResolveLocal(peer) : HostPlayerIdentity.ResolveRemote(peer);
+        long? player = local ? HostPlayerIdentity.ResolveLocal(peer) : _identities.Resolve(peer);
         if (IsCurrentPerformance(performance)) performance.RecordIdentity(PerformanceTimestamp() - started, player.HasValue);
         return player;
     }
@@ -563,8 +566,13 @@ internal sealed class DamageCommitTransport
         return package.GetArray();
     }
 
+    internal void ObserveIdentityPlayer(Player player) => _identities?.Observe(player);
+    internal void ForgetIdentityPlayer(Player player) => _identities?.Forget(player);
+
     internal void Disconnected(ZNet net)
     {
+        if (ReferenceEquals(net, _net) && _session?.IsHost == true)
+            _identities.Sync(net.GetPeers(), _session.Peer, HostPlayerIdentity.ResolveLocal(_session.Peer));
         if (ReferenceEquals(net, _net) && !net.IsServer() && net.GetServerPeer() == null) Close("Disconnected");
     }
 
@@ -595,6 +603,7 @@ internal sealed class DamageCommitTransport
         _session = null;
         _encounter = null;
         _clusters = null;
+        _identities = null;
         _performance = null;
         _encounterSettings = null;
         _attribution = null;

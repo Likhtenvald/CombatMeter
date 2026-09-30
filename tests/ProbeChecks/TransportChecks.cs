@@ -337,7 +337,7 @@ internal static class TransportChecks
     private static void Link(Node host, Node client)
     {
         client.Net.ServerPeer = new ZNetPeer { m_uid = host.Peer };
-        host.Net.Peers.Add(new ZNetPeer { m_uid = client.Peer });
+        host.Net.Peers.Add(new ZNetPeer { m_uid = client.Peer, m_playerID = 777 });
         void Wire(Node from, Node to) => from.Rpc.Send = (target, name, package) =>
         {
             if (target != ZRoutedRpc.Everybody) Eq(to.Peer, target); from.Sent.Add((target, name, package));

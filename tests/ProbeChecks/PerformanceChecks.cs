@@ -84,7 +84,7 @@ internal static class PerformanceChecks
         });
         Test("unknown recipient increments identity failure without changing routing", () =>
         {
-            var h = new Host(); Player.Instances.RemoveAll(player => player.PlayerId == 2002); h.Hit(1001, 10); h.Hit(2002, 20); h.Adapter.Update();
+            var h = new Host(); Player.Instances.RemoveAll(player => player.PlayerId == 2002); ZNet.instance.Peers[0].m_playerID = 0; h.Hit(1001, 10); h.Hit(2002, 20); h.Adapter.Update();
             Eq(1L, h.Adapter.Performance.IdentityResolutionFailures); Eq(EncounterState.NoEncounter, h.Remote.Single().EncounterState);
             True(h.Adapter.Clusters.TryGetClusterForPlayer(2002, out _)); Eq(2, h.Adapter.Clusters.ActiveCount);
         });
@@ -257,7 +257,7 @@ internal static class PerformanceChecks
         internal Host()
         {
             ZDOMan.instance = new ZDOMan(); ZDOMan.Session = 101;
-            ZNet.instance = new ZNet { Server = true, SinglePlayer = false }; ZNet.instance.Peers.Add(new ZNetPeer { m_uid = 202 });
+            ZNet.instance = new ZNet { Server = true, SinglePlayer = false }; ZNet.instance.Peers.Add(new ZNetPeer { m_uid = 202, m_playerID = 2002 });
             ZRoutedRpc.instance = Rpc; Player.Instances.Clear(); Player.m_localPlayer = new Player { PlayerId = 1001 };
             Player.m_localPlayer.View.Zdo.Owner = 101; Player.Instances.Add(Player.m_localPlayer);
             var remote = new Player { PlayerId = 2002 }; remote.View.Zdo.Owner = 202; Player.Instances.Add(remote);

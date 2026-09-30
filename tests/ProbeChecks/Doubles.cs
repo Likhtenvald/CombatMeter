@@ -67,6 +67,8 @@ internal sealed class ZDO
 {
     internal ZDOID m_uid = new ZDOID("victim:1");
     internal long Owner = 101;
+    internal long PlayerId;
+    internal long GetLong(int key, long fallback) => PlayerId;
     internal long GetOwner() => Owner;
 }
 
@@ -79,8 +81,12 @@ internal sealed class ZNetView : EngineObject
     internal ZDO GetZDO() => Zdo;
 }
 
+internal static class ZDOVars { internal const int s_playerID = 1; }
+
 internal sealed class ZDOMan
 {
+    internal readonly Dictionary<ZDOID, ZDO> Objects = new Dictionary<ZDOID, ZDO>();
+    internal ZDO GetZDO(ZDOID id) => Objects.TryGetValue(id, out var zdo) ? zdo : null;
     internal static ZDOMan instance = new ZDOMan();
     internal static long Session = 101;
     internal static long GetSessionID() => Session;
@@ -104,6 +110,8 @@ internal sealed class ZNet : EngineObject
 internal sealed class ZNetPeer
 {
     internal long m_uid;
+    internal long m_playerID;
+    internal ZDOID m_characterID;
     internal bool Ready = true;
     internal bool IsReady() => Ready && m_uid != 0;
 }

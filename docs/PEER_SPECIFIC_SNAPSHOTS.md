@@ -16,18 +16,62 @@ with the existing local ILSpy tool before implementation:
 
 ## Identity and routing
 
-HostPlayerIdentity resolves a remote peer from currently observed Player instances:
-valid Player + valid ZNetView/ZDO + ZDO owner equal to the destination peer + nonzero
-Player.GetPlayerID(). If different gameplay IDs resolve to one owner, return unresolved.
-The local listen-host uses Player.m_localPlayer, also requiring a valid view and
-ownership by the host session peer. Signed PlayerIDs remain supported.
+The distance-dependent HUD failure was in recipient identity lookup, not in cluster
+selection: the previous ResolveRemote scanned Player.GetAllPlayers and returned
+unresolved when the remote entity unloaded. The builder then sent NoEncounter even
+with an active cluster. Managed adapter checks reproduce remote acceptance, duplicate
+ACK and sender rejection without an observed Player; no distance dependency was
+found in DamageCommit delivery. This does not substitute for logs of the reported
+live session.
 
-Mapping is recomputed each publish cycle without a persistent cache. Missing,
-destroyed, invalid, zero-ID or ambiguous observations resolve to no identity.
-A remote Player outside the host's currently instantiated/observed entities therefore
-receives an empty snapshot until an authoritative entity becomes available. There is
-no scene scan, name/position heuristic, damage-based identity, peer==PlayerID shortcut,
-or speculative reconnect mapping. Mapping itself does not create membership.
+SessionPlayerIdentity now binds a currently ready nonzero PeerID to a nonzero
+Gameplay PlayerID and to the actual ZNetPeer instance for this connection.
+The installed assembly inspection confirms these vanilla paths:
+
+- ZNet registers PlayerID on each connected peer's ZRpc; RPC_PlayerID writes
+  that peer's m_playerID. A nonzero value is usable without a Player instance.
+- Merely having this handler is insufficient: no invocation was found in the
+  inspected normal connection/spawn paths. Game.SpawnPlayer actually loads the
+  local PlayerProfile and calls ZNet.SetCharacterID.
+- The host's RPC_CharacterID associates that character ZDOID with the actual peer.
+  ZDOMan.GetZDO(peer.m_characterID) retrieves replicated data without instantiating
+  a Unity Player. Its owner must match the peer; ZDOVars.s_playerID must be nonzero.
+  If both vanilla identity sources exist, they must agree.
+
+Character ZDO data can arrive after registration. Until a source is available,
+the peer receives NoEncounter; no combat facts or other cluster supply identity.
+After verification, temporary missing character data (including respawn gaps) does
+not revoke that connection's binding. Available replacement data must agree.
+An explicitly zero identity remains unresolved while initialization completes.
+
+Player.Start/OnDestroy notifications maintain a small list of observed entities,
+bootstrapped once from registered Players when the host session starts. A single
+consistency audit of those references checks available Player/ZDO identities before
+publication. Absence or an invalid/unloaded view is not an identity source and does
+not invalidate a verified vanilla binding. Nonzero disagreement quarantines the
+connection; it never silently switches to another PlayerID.
+
+The recipient lookup is O(1). Reusable maps/lists reconcile connected peers and
+check observed entities once per publication (O(peers + observed Players)), rather
+than scanning Player.GetAllPlayers for every recipient. No scene/world-object scan,
+per-frame collection, additional RPC, or change to snapshot frequency is introduced.
+This reconciliation cost is included in snapshot-cycle telemetry; identity timing
+now measures the recipient lookup.
+
+Disconnect reconciliation drops bindings; a replacement ZNetPeer with the same UID
+starts fresh even between publications. World/session close discards the whole
+registry and its observed references. Respawn retains the same verified gameplay
+identity. Changed identity, duplicate active PlayerID, local-player collision,
+ambiguous PeerID or conflicting observations fail closed until reconnect.
+Transition-only diagnostics use the existing transport diagnostic switch:
+CombatIdentityBound, CombatIdentityRejected, CombatIdentityInvalidated and
+CombatSnapshotIdentityUnresolved. Performance diagnostics remain separately opt-in.
+
+Trust model: CombatMeter is a cooperative statistics mod, not an anti-cheat system.
+It trusts vanilla peer identity and character ownership/registration to the same
+extent as Valheim. These consistency checks protect against stale/conflicting
+routing, not a malicious modified client forging vanilla PlayerID or ZDO data.
+There is no new identity handshake, and no identity/name/distance/cluster heuristic.
 
 CombatSnapshotBuilder.ForPlayer calls only TryGetClusterForPlayer. A successful
 membership lookup builds from that cluster's EncounterManager. NoCluster or unresolved
@@ -77,5 +121,5 @@ dotnet run --project tests/ProbeChecks/ProbeChecks.csproj -c Release
 dotnet build DiagnosticDamageProbe.csproj -c Release --no-incremental
 ```
 
-All 402 checks pass. Release build completes with zero warnings and errors.
+The original 4C baseline was 402 checks. The hotfix extends the 465-check release\nbaseline with distance, vanilla-character registration, conflict and lifecycle regressions.
 No Valheim runtime test is performed by this milestone's automated workflow.

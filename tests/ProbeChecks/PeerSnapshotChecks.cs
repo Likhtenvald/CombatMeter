@@ -93,12 +93,13 @@ internal static class PeerSnapshotChecks
         Test("mapping loss clears previously delivered combat on next cycle", () =>
         {
             var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish(); Rows(h.Remote(202), 2002);
-            Player.Instances.RemoveAll(p => p.PlayerId == 2002); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+            Player.Instances.RemoveAll(p => p.PlayerId == 2002); h.Net.Peers[0].m_playerID = 0; h.Now = 1; h.Publish(); Empty(h.Remote(202));
         });
         Test("ownership change is observed without stale mapping cache", () =>
         {
             var h = new Host(); h.AddPeer(202, 2002); h.AddPeer(303, null); h.Done(2002, 10); h.Publish();
             Player.Instances.Single(p => p.PlayerId == 2002).View.Zdo.Owner = 303;
+            h.Net.Peers[0].m_playerID = 0; h.Net.Peers[1].m_playerID = 2002;
             h.Now = 1; h.Publish(); Empty(h.Remote(202)); Rows(h.Remote(303), 2002);
         });
         Test("ambiguous owner identities fail closed independent of enumeration", () =>
@@ -162,12 +163,135 @@ internal static class PeerSnapshotChecks
             foreach (Action invalid in new Action[] { () => CombatSnapshotBuilder.Empty(0, Guid.NewGuid(), 1), () => CombatSnapshotBuilder.Empty(101, Guid.Empty, 1), () => CombatSnapshotBuilder.Empty(101, Guid.NewGuid(), 0) })
             { bool rejected = false; try { invalid(); } catch (ArgumentException) { rejected = true; } True(rejected); }
         });
+
+        Test("verified vanilla identity survives remote entity unloading", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish(); Rows(h.Remote(202), 2002);
+            h.Unload(2002); h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("initial connection outside host area needs no observed Player", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers[0].m_playerID = -42;
+            h.Done(-42, 10); h.Publish(); Rows(h.Remote(202), -42);
+        });
+        Test("two absent remote players keep independent snapshots", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.AddPeer(303, 3003);
+            h.Done(2002, 10, 4); h.Done(3003, 20, 9); h.Publish(); h.Unload(2002); h.Unload(3003);
+            h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002); Rows(h.Remote(303), 3003);
+            Eq(4f, h.Remote(202).Players[0].DamageDone); Eq(9f, h.Remote(303).Players[0].DamageDone);
+        });
+        Test("absent remote players receive survivor after legitimate bridge", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.AddPeer(303, 3003);
+            var first = h.Done(2002, 10); h.Done(3003, 20); h.Publish(); h.Unload(2002); h.Unload(3003);
+            h.Now = 1; h.Done(2002, 20); h.Publish();
+            Rows(h.Remote(202), 2002, 3003); Rows(h.Remote(303), 2002, 3003);
+            Eq(first.Id, h.Remote(202).EncounterId); Eq(first.Id, h.Remote(303).EncounterId);
+        });
+        Test("disconnect invalidates and reconnect needs current vanilla registration", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish(); h.Unload(2002);
+            h.Net.Peers.Clear(); h.Adapter.Disconnected(h.Net);
+            h.Net.Peers.Add(new ZNetPeer { m_uid = 202 }); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+            h.Net.Peers[0].m_playerID = 3003; h.Done(3003, 20); h.Now = 2; h.Publish(); Rows(h.Remote(202), 3003);
+        });
+        Test("connection replacement between publications does not reuse old binding", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish(); h.Unload(2002);
+            h.Net.Peers[0] = new ZNetPeer { m_uid = 202 }; h.Now = 1; h.Publish(); Empty(h.Remote(202));
+        });
+        Test("respawn with unchanged vanilla identity retains route", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish();
+            h.Unload(2002); h.AddEntity(202, 2002); h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("new observed conflicting entity quarantines binding until reconnect", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish();
+            h.AddEntity(202, 3003); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+            h.Unload(3003); h.Now = 2; h.Publish(); Empty(h.Remote(202));
+            h.Net.Peers[0] = new ZNetPeer { m_uid = 202, m_playerID = 2002 }; h.Now = 3; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("changed vanilla identity cannot silently select another cluster", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Done(3003, 20); h.Publish(); h.Unload(2002);
+            h.Net.Peers[0].m_playerID = 3003; h.Now = 1; h.Publish(); Empty(h.Remote(202));
+            h.Net.Peers[0].m_playerID = 2002; h.Now = 2; h.Publish(); Empty(h.Remote(202));
+        });
+        Test("duplicate vanilla player identities fail closed for both peers", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.AddPeer(303, null);
+            h.Net.Peers[0].m_playerID = h.Net.Peers[1].m_playerID = 2002;
+            h.Done(2002, 10); h.Publish(); Empty(h.Remote(202)); Empty(h.Remote(303));
+        });
+        Test("remote claiming local host identity fails closed", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers[0].m_playerID = 1001;
+            h.Done(1001, 10); h.Publish(); Rows(h.Local, 1001); Empty(h.Remote(202));
+        });
+        Test("world reset discards quarantined bindings and combat state", () =>
+        {
+            var h = new Host(); h.AddPeer(202, 2002); h.Done(2002, 10); h.Publish();
+            h.AddEntity(202, 3003); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+            h.Adapter.Stop(h.Net);
+            var fresh = new Host(); fresh.AddPeer(202, 2002); fresh.Done(2002, 20); fresh.Publish(); Rows(fresh.Remote(202), 2002);
+        });
+        Test("remote commits without Player preserve ACK dedup sender validation and routing", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002);
+            var commit = new DamageCommit(new EventId(202, Guid.NewGuid(), 1),
+                new DamageFacts(99, 10, false, null, AttackerClass.Player, 2002, 1, "NPC", "P"), 7, DateTime.UtcNow.Ticks);
+            h.Use();
+            h.Rpc.Handlers[DamageCommitTransport.CommitRpc](202, new ZPackage(CommitCodec.Encode(commit)));
+            h.Rpc.Handlers[DamageCommitTransport.CommitRpc](202, new ZPackage(CommitCodec.Encode(commit)));
+            h.Rpc.Handlers[DamageCommitTransport.CommitRpc](303, new ZPackage(CommitCodec.Encode(commit)));
+            Eq(Acceptance.Accepted, h.Acks[0]); Eq(Acceptance.Duplicate, h.Acks[1]); Eq(Acceptance.SenderMismatch, h.Acks[2]);
+            Eq(1, h.Adapter.Clusters.ActiveCount); h.Publish(); Rows(h.Remote(202), 2002); Eq(7f, h.Remote(202).Players[0].DamageDone);
+            h.Now = 21; h.Publish(); Empty(h.Remote(202));
+        });
+
+        Test("vanilla character registration resolves initial distant peer without PlayerID RPC", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002); h.Done(2002, 10); h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("character replication absence and respawn retain verified identity", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002); h.Done(2002, 10); h.Publish();
+            ZDOMan.instance.Objects.Clear(); h.Net.Peers[0].m_characterID = default; h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+            h.Character(202, 2002); h.Now = 2; h.Publish(); Rows(h.Remote(202), 2002);
+        });
+        Test("new character with changed gameplay identity is rejected", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002); h.Done(2002, 10); h.Publish();
+            h.Character(202, 3003); h.Now = 1; h.Publish(); Empty(h.Remote(202));
+        });
+        Test("character registration owner mismatch cannot route another peer", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 2002, 303); h.Done(2002, 10); h.Publish(); Empty(h.Remote(202));
+        });
+        Test("zero character identity fails closed", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Character(202, 0); h.Done(2002, 10); h.Publish(); Empty(h.Remote(202));
+        });
+        Test("vanilla PlayerID and character disagreement fails closed", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers[0].m_playerID = 2002; h.Character(202, 3003);
+            h.Done(2002, 10); h.Done(3003, 20); h.Publish(); Empty(h.Remote(202));
+        });
+        Test("unregistered initial character cannot use combat facts as identity", () =>
+        {
+            var h = new Host(); h.AddPeer(202, null); h.Net.Peers[0].m_characterID = new ZDOID("missing");
+            h.Done(2002, 10); h.Publish(); Empty(h.Remote(202));
+            h.Character(202, 2002); h.Now = 1; h.Publish(); Rows(h.Remote(202), 2002);
+        });
         return _passed;
     }
 
     private sealed class Host
     {
         internal double Now;
+        internal readonly List<Acceptance> Acks = new List<Acceptance>();
         internal readonly ZNet Net = new ZNet { Server = true, SinglePlayer = false };
         internal readonly ZRoutedRpc Rpc = new ZRoutedRpc();
         internal readonly DamageCommitTransport Adapter;
@@ -180,6 +304,7 @@ internal static class PeerSnapshotChecks
             Adapter = new DamageCommitTransport(() => Now); Adapter.Bind(Net);
             Rpc.Send = (peer, name, package) =>
             {
+                if (name == DamageCommitTransport.AckRpc) { Acks.Add(CommitCodec.DecodeAck(package.GetArray()).Result); return; }
                 if (name != DamageCommitTransport.SnapshotRpc) return;
                 Sent.Add((peer, CombatSnapshotCodec.Decode(package.GetArray())));
                 DeliverBytes(peer, 101, package.GetArray());
@@ -187,10 +312,10 @@ internal static class PeerSnapshotChecks
         }
         internal void Use() { ZNet.instance = Net; ZRoutedRpc.instance = Rpc; ZDOMan.Session = 101; }
         internal Player AddEntity(long owner, long id)
-        { var p = new Player { PlayerId = id }; p.View.Zdo.Owner = owner; Player.Instances.Add(p); return p; }
+        { var p = new Player { PlayerId = id }; p.View.Zdo.Owner = owner; Player.Instances.Add(p); Adapter?.ObserveIdentityPlayer(p); return p; }
         internal void AddPeer(long peer, long? player, bool ready = true)
         {
-            Net.Peers.Add(new ZNetPeer { m_uid = peer, Ready = ready });
+            Net.Peers.Add(new ZNetPeer { m_uid = peer, m_playerID = player ?? 0, Ready = ready });
             if (player.HasValue) AddEntity(peer, player.Value);
             var c = new Client(peer, () => Now); _clients.Add(peer, c); Use();
         }
@@ -198,6 +323,17 @@ internal static class PeerSnapshotChecks
         {
             Use(); Adapter.Observe(101, new DamageFacts(99, npc, false, null, AttackerClass.Player, player, 1, "NPC", "Player"), loss);
             True(Adapter.Clusters.TryGetClusterForPlayer(player, out var c)); return c;
+        }
+        internal void Character(long peer, long player, long? owner = null)
+        {
+            var id = new ZDOID(Guid.NewGuid().ToString());
+            Net.Peers.Single(p => p.m_uid == peer).m_characterID = id;
+            ZDOMan.instance.Objects[id] = new ZDO { m_uid = id, Owner = owner ?? peer, PlayerId = player };
+        }
+        internal void Unload(long player)
+        {
+            foreach (var entity in Player.Instances.Where(p => p.PlayerId == player).ToArray())
+            { Adapter.ForgetIdentityPlayer(entity); Player.Instances.Remove(entity); entity.Destroyed = true; }
         }
         internal void Publish() { Use(); Adapter.Update(); }
         internal CombatSnapshot Local { get { True(Adapter.SnapshotStore.TryGetLatest(out var s)); return s; } }
