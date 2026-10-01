@@ -1,4 +1,4 @@
-# Summon-owner display names (1.0.1 candidate, plugin version unchanged)
+# Summon-owner display names — CombatMeter 1.0.1
 
 Baseline: main b7ce679fe83fe6113dc9eac387d318e19405d5b6, plugin 1.0.0,
 531 managed checks. No protocol change required.
@@ -76,10 +76,13 @@ world reset, same-name players, isolation/merge, conflicts, zero identity, local
 host, Recovery/metrics preservation, and no additional GetAllPlayers scans.
 Tests exercise production provenance registration, attribution, cluster statistics,
 directed snapshots, client decoding and HUD presentation through managed doubles.
-Unity/Harmony and actual Valheim multiplayer still require manual runtime testing.
+The user successfully completed manual Valheim runtime testing with functional
+commit 60efaa6e9d57ec60abc59529df61cc3914692dcb. Release preparation freezes that
+implementation and changes only version metadata and documentation.
 
 Storage is O(connected players), name lookup O(1), metadata synchronization reuses
 existing peer iteration and O(1) statistics lookups. No per-hit telemetry, name
 history, added RPC, per-hit allocation, extra snapshot, or scene scan is introduced.
-CombatSnapshot.v2 and MagicAttribution.v1 remain unchanged. Plugin version,
-manifest, CHANGELOG, main and frozen release packages remain unchanged.
+CombatSnapshot.v2 and MagicAttribution.v1 remain unchanged. Release 1.0.1 changes
+version metadata and release documentation only; previous release packages remain
+frozen.

@@ -1,6 +1,6 @@
 # CombatMeter
 
-CombatMeter 1.0.0 is the first stable release, providing host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
+CombatMeter 1.0.1 provides host-authoritative combat statistics for Valheim 1.0.15 in single-player and Listen Host multiplayer.
 
 ## What it shows
 

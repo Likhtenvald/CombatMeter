@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Fixed player names for damage attributed from supported owned summons and magic sources, including when summon damage is the first combat event.
+- Owner display names now come from vanilla session identity and remain available when the remote Player object is unloaded from the host scene.
+- Attribution remains host-authoritative and PlayerID-based; names are presentation metadata only. Combat behavior and snapshot protocol are unchanged.
+
 ## 1.0.0
 
 - First stable CombatMeter release for single-player and Listen Host multiplayer, with host-authoritative per-player Damage Done, contribution percentage, personal active-time DPS, and Damage Taken.

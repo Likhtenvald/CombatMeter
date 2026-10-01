@@ -1,20 +1,20 @@
-# Stable release packaging — CombatMeter 1.0.0
+# Stable release packaging — CombatMeter 1.0.1
 
 The canonical project Version generates BuildInfo.Version for the BepInEx plugin
-attribute. Plugin and manifest version are 1.0.0; assembly version is 1.0.0.0.
+attribute. Plugin and manifest version are 1.0.1; assembly version is 1.0.1.0.
 Plugin GUID Likhtenvald.CombatMeter, CombatMeter package/DLL name, and internal
 DiagnosticDamageProbe namespaces and project filename remain unchanged.
 
-The runtime-tested feature commit b7d7ba306c452b7c0013518802c0656dd628f284 is frozen.
+The runtime-tested feature commit 60efaa6e9d57ec60abc59529df61cc3914692dcb is frozen.
 Release preparation changes only version metadata and documentation. The baseline
-contains 531 managed checks; final main must pass these and a clean Release build
+contains 553 managed checks; final main must pass these and a clean Release build
 with zero warnings/errors before packaging.
 
 Runtime dependency remains denikson-BepInExPack_Valheim-5.4.2350. Valheim and Unity
 assemblies are game-provided; Harmony is supplied by BepInEx. No test doubles,
 decompiler dependencies, or other runtime libraries belong in the package.
 
-The canonical scripts/package.ps1 produces outputs/package/CombatMeter-1.0.0.zip
+The canonical scripts/package.ps1 produces outputs/package/CombatMeter-1.0.1.zip
 with exactly these entries:
 
     CHANGELOG.md
